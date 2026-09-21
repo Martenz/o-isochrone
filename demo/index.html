@@ -34,9 +34,28 @@
       box-shadow: 0 10px 30px rgba(16, 32, 51, 0.12);
     }
     body.panel-open #hud { display: none; }
-    #hud h1 { margin: 0 0 6px; font-size: 18px; }
+    .hud-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+    .hud-title h1 { margin: 0; font-size: 18px; }
+    #bulk-open {
+      flex: none;
+      border: 1px solid var(--accent);
+      background: #fff;
+      color: var(--accent);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
     #hud p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.4; }
-    #panel {
+    #panel, #bulk-panel {
       position: absolute;
       z-index: 3;
       top: 0;
@@ -49,7 +68,8 @@
       border-right: 1px solid var(--line);
       box-shadow: 12px 0 40px rgba(16, 32, 51, 0.16);
     }
-    #panel.open { display: flex; }
+    #bulk-panel { width: min(460px, 100%); }
+    #panel.open, #bulk-panel.open { display: flex; }
     .panel-header {
       display: flex;
       align-items: flex-start;
@@ -169,6 +189,227 @@
     }
     #map-loader.visible { display: grid; }
     body.panel-open #map-loader { left: min(380px, 100%); }
+    body.bulk-open #map-loader { left: min(460px, 100%); }
+    .bulk-hint {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .bulk-table-block { display: grid; }
+    .bulk-table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-bottom: 0;
+      border-radius: 8px 8px 0 0;
+    }
+    .bulk-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .bulk-table th {
+      text-align: left;
+      font-weight: 600;
+      color: var(--muted);
+      padding: 8px 6px;
+      background: #f8fafc;
+      border-bottom: 1px solid var(--line);
+    }
+    .bulk-table td {
+      padding: 4px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: middle;
+    }
+    .bulk-table input {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font: inherit;
+      color: var(--ink);
+    }
+    .bulk-table .id-cell { width: 88px; }
+    .bulk-table .remove-row {
+      width: 32px;
+      height: 28px;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .bulk-table tbody tr:last-child td { border-bottom: 0; }
+    .panel-form .add-row {
+      margin: 0;
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid var(--line);
+      border-top: 1px dashed #c5d0db;
+      border-radius: 0 0 8px 8px;
+      background: #f8fafc;
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 13px;
+      padding: 9px 12px;
+    }
+    .panel-form .add-row:hover {
+      background: #eff6ff;
+    }
+    .file-btn input { display: none; }
+    .bulk-import {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .bulk-import summary {
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .bulk-import textarea {
+      width: 100%;
+      box-sizing: border-box;
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 12px;
+      resize: vertical;
+    }
+    .bulk-import-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .panel-form .bulk-import-actions button,
+    .bulk-import-actions .file-btn,
+    .bulk-import-actions .import-help {
+      box-sizing: border-box;
+      margin: 0;
+      height: 36px;
+      padding: 0 12px;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--accent);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .bulk-import-actions .file-btn {
+      font-weight: 600;
+    }
+    .bulk-import-actions .import-help {
+      width: 36px;
+      padding: 0;
+      font-style: italic;
+      font-family: Georgia, "Times New Roman", serif;
+      font-weight: 700;
+      user-select: none;
+    }
+    .bulk-import-actions button:hover,
+    .bulk-import-actions .file-btn:hover,
+    .bulk-import-actions .import-help:hover,
+    .bulk-import-actions .import-help:focus {
+      background: #eff6ff;
+      outline: none;
+    }
+    .modal {
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      display: none;
+      place-items: center;
+      padding: 24px 16px;
+    }
+    .modal.open { display: grid; }
+    .modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(16, 32, 51, 0.4);
+    }
+    .modal-card {
+      position: relative;
+      z-index: 1;
+      width: min(480px, 100%);
+      max-height: min(88vh, 640px);
+      overflow: auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 16px 48px rgba(16, 32, 51, 0.24);
+    }
+    .modal-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 16px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .modal-header h3 { margin: 0; font-size: 16px; }
+    .modal-body {
+      padding: 14px 16px 18px;
+      display: grid;
+      gap: 12px;
+      font-size: 13px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    .modal-body p { margin: 0; color: var(--muted); }
+    .modal-body h4 {
+      margin: 0 0 4px;
+      font-size: 13px;
+      color: var(--ink);
+    }
+    .modal-body pre {
+      margin: 6px 0 0;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+      font-size: 12px;
+      line-height: 1.45;
+      overflow: auto;
+      white-space: pre-wrap;
+      color: var(--ink);
+    }
+    .origin-toggles { display: grid; gap: 6px; }
+    .origin-toggles label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--ink);
+    }
+    .origin-toggles .hint {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+    .origin-marker {
+      min-width: 22px;
+      height: 22px;
+      padding: 0 6px;
+      border-radius: 999px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      display: grid;
+      place-items: center;
+      border: 2px solid #fff;
+      box-shadow: 0 2px 8px rgba(16, 32, 51, 0.35);
+    }
     .map-loader-card {
       display: grid;
       justify-items: center;
@@ -196,8 +437,11 @@
 </head>
 <body>
   <div id="hud">
-    <h1>oisochron demo</h1>
-    <p>The dotted outline is the extent of the downloaded OSM road extract. Search for an address or coordinates, or click the map, then compute. Roads from the extract are not drawn.</p>
+    <div class="hud-title">
+      <h1>oisochron demo</h1>
+      <button type="button" id="bulk-open">Bulk</button>
+    </div>
+    <p>The dotted outline is the extent of the downloaded OSM road extract. Search or click the map for one origin, or open Bulk to compute several overlapping isochrones. Roads from the extract are not drawn.</p>
   </div>
   <aside id="panel" aria-hidden="true">
     <div class="panel-header">
@@ -262,17 +506,154 @@
       </form>
     </div>
   </aside>
+  <aside id="bulk-panel" aria-hidden="true">
+    <div class="panel-header">
+      <div>
+        <h2>Bulk isochrones</h2>
+        <p>Several origins, one shared travel budget. Leave ID blank to auto-number 1, 2, 3… Click the map to fill a row.</p>
+      </div>
+      <button type="button" class="panel-close" id="bulk-close" aria-label="Close">×</button>
+    </div>
+    <div class="panel-body">
+      <form class="panel-form" id="bulk-form">
+        <p class="bulk-hint">Optional ID is the filter key for overlapping layers. Click the map to drop a point into an empty row.</p>
+        <details class="bulk-import">
+          <summary>Paste or import coordinates</summary>
+          <textarea id="bulk-paste" rows="5" placeholder="duomo, 45.4642, 9.1900&#10;45.4863, 9.2045&#10;navigli, 45.4515, 9.1750"></textarea>
+          <div class="bulk-import-actions">
+            <button type="button" class="secondary" id="bulk-paste-apply">Load pasted rows</button>
+            <label class="file-btn">Import file
+              <input type="file" id="bulk-file" accept=".csv,.txt,.json,.geojson,text/csv,application/json" />
+            </label>
+            <i id="bulk-import-help" class="import-help" role="button" tabindex="0" aria-haspopup="dialog" aria-controls="import-help-modal" aria-label="Import format guidelines" title="Import format guidelines">i</i>
+          </div>
+        </details>
+        <div class="bulk-table-block">
+          <div class="bulk-table-wrap">
+            <table class="bulk-table">
+              <thead>
+                <tr>
+                  <th class="id-cell">ID</th>
+                  <th>Latitude</th>
+                  <th>Longitude</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="bulk-tbody"></tbody>
+            </table>
+          </div>
+          <button type="button" class="add-row" id="bulk-add">+ Add a row</button>
+        </div>
+        <label>Travel time (minutes)
+          <input name="travel_time_min" type="number" min="1" max="120" value="15" required />
+        </label>
+        <label>Travel type
+          <select name="travel_type">
+            <option value="foot">foot</option>
+            <option value="bicycle">bicycle</option>
+            <option value="car">car</option>
+          </select>
+        </label>
+        <fieldset class="include-options">
+          <legend>Return</legend>
+          <label>
+            <input type="checkbox" name="include" value="buffered_lines" checked />
+            <span>Buffered roads<span class="hint">Corridor around reachable streets</span></span>
+          </label>
+          <label>
+            <input type="checkbox" name="include" value="lines" />
+            <span>Reachable roads<span class="hint">Network polylines</span></span>
+          </label>
+          <label>
+            <input type="checkbox" name="include" value="filled_buffer" />
+            <span>Filled isochrone<span class="hint">Buffered roads with interiors filled</span></span>
+          </label>
+          <label>
+            <input type="checkbox" name="include" value="convex_hull" />
+            <span>Convex hull<span class="hint">Outer envelope; overestimates gaps</span></span>
+          </label>
+          <label>
+            <input type="checkbox" name="include" value="concave_hull" />
+            <span>Concave hull<span class="hint">Tighter envelope; can cut through roads</span></span>
+          </label>
+          <label>
+            <input type="checkbox" name="include" value="h3" />
+            <span>H3 cells<span class="hint">Hexagons covering the reachable corridor</span></span>
+          </label>
+        </fieldset>
+        <label>Line buffer (meters)
+          <input name="buffer_meters" type="number" min="0" step="1" value="10" />
+        </label>
+        <label>H3 resolution
+          <input name="h3_resolution" type="number" min="0" max="15" step="1" value="10" />
+        </label>
+        <button type="submit">Compute bulk isochrones</button>
+        <div class="status" id="bulk-status"></div>
+        <div class="iso-results" id="bulk-results">
+          <div class="origin-toggles" id="bulk-origin-toggles"></div>
+          <div class="layer-toggles" id="bulk-layer-toggles"></div>
+          <button type="button" class="secondary" id="bulk-download">Download GeoJSON</button>
+        </div>
+      </form>
+    </div>
+  </aside>
   <div id="map"></div>
   <div id="map-loader">
     <div class="map-loader-card" role="status" aria-live="polite">
       <div class="map-loader-spinner" aria-hidden="true"></div>
-      <span>Computing isochrone…</span>
+      <span id="map-loader-text">Computing isochrone…</span>
+    </div>
+  </div>
+  <div id="import-help-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="import-help-title" aria-hidden="true">
+    <div class="modal-backdrop" data-import-help-close="1"></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="import-help-title">Import formats</h3>
+        <button type="button" class="panel-close" data-import-help-close="1" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <p>Paste or upload <strong>.csv</strong>, <strong>.txt</strong>, <strong>.json</strong>, or <strong>.geojson</strong>. Separators can be comma, semicolon, or tab. Lines starting with <code>#</code> are ignored. Excel (<code>.xlsx</code>), polygons, and lines are not imported.</p>
+        <div>
+          <h4>CSV / text — coordinates only</h4>
+          <p>Id is left blank and auto-numbered (1, 2, 3…).</p>
+          <pre>45.4642, 9.1900
+45.4863, 9.2045</pre>
+        </div>
+        <div>
+          <h4>CSV / text — id, latitude, longitude</h4>
+          <pre>duomo, 45.4642, 9.1900
+navigli, 45.4515, 9.1750</pre>
+        </div>
+        <div>
+          <h4>CSV with a header</h4>
+          <p>Accepted names: <code>id</code> / <code>origin_id</code>, <code>lat</code> / <code>latitude</code>, <code>lon</code> / <code>lng</code> / <code>longitude</code>.</p>
+          <pre>id,lat,lon
+duomo,45.4642,9.1900
+,45.4863,9.2045</pre>
+        </div>
+        <div>
+          <h4>GeoJSON Point features</h4>
+          <p>A FeatureCollection or a single Feature. Id comes from <code>feature.id</code>, then <code>properties.id</code>, then <code>properties.origin_id</code>.</p>
+          <pre>{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "duomo",
+      "geometry": { "type": "Point", "coordinates": [9.1900, 45.4642] }
+    }
+  ]
+}</pre>
+        </div>
+      </div>
     </div>
   </div>
   <script>
     const API = "/api";
     const ITALY_BBOX = [6.627, 35.493, 18.521, 47.092];
     const DEFAULT_BUFFER_METERS = 10;
+    const DEFAULT_BULK_ROWS = 4;
+    const ORIGIN_COLORS = ["#1d4ed8", "#b45309", "#0f766e", "#7c3aed", "#be123c", "#0369a1", "#4d7c0f", "#c2410c"];
 
     const map = new maplibregl.Map({
       container: "map",
@@ -362,6 +743,10 @@
     function selectSearchResult(lng, lat) {
       const lngLat = new maplibregl.LngLat(lng, lat);
       map.flyTo({ center: lngLat, zoom: Math.max(map.getZoom(), 14), pitch: 30, duration: 800 });
+      if (bulkPanel && bulkPanel.classList.contains("open")) {
+        addOriginFromMap(lngLat);
+        return;
+      }
       openPanel(lngLat);
     }
 
@@ -520,16 +905,45 @@
     }
 
     const panel = document.getElementById("panel");
+    const bulkPanel = document.getElementById("bulk-panel");
     const form = document.getElementById("iso-form");
+    const bulkForm = document.getElementById("bulk-form");
     const coordsEl = document.getElementById("iso-coords");
     const mapLoader = document.getElementById("map-loader");
+    const mapLoaderText = document.getElementById("map-loader-text");
     let marker = null;
     let lastLngLat = null;
     let lastCollection = null;
+    let bulkRowSeq = 1;
+    let bulkRows = [];
+    let bulkMarkers = [];
+    let enabledOriginIds = null;
+    let enabledKinds = null;
 
-    function showMapLoader(visible) {
+    function showMapLoader(visible, text) {
+      if (text) mapLoaderText.textContent = text;
       mapLoader.classList.toggle("visible", visible);
       mapLoader.setAttribute("aria-hidden", visible ? "false" : "true");
+    }
+
+    function originColor(index) {
+      return ORIGIN_COLORS[index % ORIGIN_COLORS.length];
+    }
+
+    function escapeAttr(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("<", "&lt;");
+    }
+
+    function errorDetail(payload, fallback) {
+      const detail = payload && payload.detail;
+      if (typeof detail === "string") return detail;
+      if (Array.isArray(detail)) {
+        return detail.map((item) => item.msg || JSON.stringify(item)).join("; ");
+      }
+      return fallback;
     }
 
     const LAYER_GROUPS = {
@@ -584,30 +998,117 @@
       return { type: "FeatureCollection", features: [] };
     }
 
-    function setLayersVisible(layerIds, visible) {
-      const visibility = visible ? "visible" : "none";
-      for (const id of layerIds) {
-        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visibility);
+    function flattenCoords(value, into = []) {
+      if (!Array.isArray(value) || value.length === 0) return into;
+      if (typeof value[0] === "number") {
+        into.push(value);
+        return into;
+      }
+      for (const item of value) flattenCoords(item, into);
+      return into;
+    }
+
+    function fitFeatures(features) {
+      const bounds = new maplibregl.LngLatBounds();
+      let any = false;
+      for (const feature of features) {
+        const geometry = feature && feature.geometry;
+        if (!geometry || geometry.coordinates == null) continue;
+        for (const coord of flattenCoords(geometry.coordinates)) {
+          if (coord.length >= 2) {
+            bounds.extend([coord[0], coord[1]]);
+            any = true;
+          }
+        }
+      }
+      if (any) map.fitBounds(bounds, { padding: 72, pitch: 30, duration: 900 });
+    }
+
+    function kindFilter(kind) {
+      const base = ["==", ["get", "kind"], kind];
+      if (!enabledOriginIds) return base;
+      return [
+        "all",
+        base,
+        ["in", ["get", "origin_id"], ["literal", enabledOriginIds]],
+      ];
+    }
+
+    function applyLayerFilters() {
+      for (const [kind, ids] of Object.entries(LAYER_GROUPS)) {
+        const kindOn = !enabledKinds || enabledKinds.has(kind);
+        for (const id of ids) {
+          if (!map.getLayer(id)) continue;
+          map.setFilter(id, kindFilter(kind));
+          map.setLayoutProperty(id, "visibility", kindOn ? "visible" : "none");
+        }
       }
     }
 
     function resetResultLayers() {
-      Object.values(LAYER_GROUPS).forEach((ids) => setLayersVisible(ids, true));
+      enabledKinds = null;
+      enabledOriginIds = null;
+      applyLayerFilters();
     }
 
     function clearResultLayers() {
       lastCollection = null;
+      enabledKinds = null;
+      enabledOriginIds = null;
       setSourceData("isochrone-fill", emptyCollection());
       setSourceData("isochrone-line", emptyCollection());
-      resetResultLayers();
+      applyLayerFilters();
       document.getElementById("iso-results").classList.remove("visible");
       document.getElementById("layer-toggles").innerHTML = "";
-      const status = document.getElementById("iso-status");
-      status.classList.remove("error");
-      status.textContent = "";
+      document.getElementById("bulk-results").classList.remove("visible");
+      document.getElementById("bulk-layer-toggles").innerHTML = "";
+      document.getElementById("bulk-origin-toggles").innerHTML = "";
+      for (const id of ["iso-status", "bulk-status"]) {
+        const status = document.getElementById(id);
+        status.classList.remove("error");
+        status.textContent = "";
+      }
+    }
+
+    function paintCollections(collections) {
+      const polygons = { type: "FeatureCollection", features: [] };
+      const lines = { type: "FeatureCollection", features: [] };
+      for (const collection of collections) {
+        for (const feature of collection.features || []) {
+          const type = feature.geometry && feature.geometry.type;
+          if (type === "LineString" || type === "MultiLineString") {
+            lines.features.push(feature);
+          } else {
+            polygons.features.push(feature);
+          }
+        }
+      }
+      setSourceData("isochrone-fill", polygons);
+      setSourceData("isochrone-line", lines);
+      applyLayerFilters();
+      fitFeatures([...polygons.features, ...lines.features]);
+    }
+
+    function combinedCollection(collections) {
+      const features = collections.flatMap((item) => item.features || []);
+      return {
+        type: "FeatureCollection",
+        features,
+        metadata: {
+          count: collections.length,
+          origins: collections.map((item) => item.metadata || {}),
+        },
+      };
+    }
+
+    function selectedInclude(formEl) {
+      return [...formEl.querySelectorAll("input[name='include']:checked")].map(
+        (input) => input.value,
+      );
     }
 
     function openPanel(lngLat) {
+      closeBulkPanel({ keepLayers: false, keepMarkers: false });
       lastLngLat = lngLat;
       coordsEl.textContent = `${lngLat.lat.toFixed(5)}, ${lngLat.lng.toFixed(5)}`;
       if (marker) marker.remove();
@@ -615,9 +1116,10 @@
       panel.classList.add("open");
       panel.setAttribute("aria-hidden", "false");
       document.body.classList.add("panel-open");
+      document.body.classList.remove("bulk-open");
     }
 
-    function closePanel() {
+    function closePanel({ keepLayers = false } = {}) {
       panel.classList.remove("open");
       panel.setAttribute("aria-hidden", "true");
       document.body.classList.remove("panel-open");
@@ -627,17 +1129,228 @@
         marker = null;
       }
       lastLngLat = null;
-      clearResultLayers();
+      if (!keepLayers) clearResultLayers();
     }
 
-    function renderResultControls(collection) {
-      const results = document.getElementById("iso-results");
-      const toggles = document.getElementById("layer-toggles");
+    function clearBulkMarkers() {
+      bulkMarkers.forEach((item) => item.remove());
+      bulkMarkers = [];
+    }
+
+    function syncBulkMarkers() {
+      clearBulkMarkers();
+      const filled = filledBulkRows();
+      filled.forEach((row, index) => {
+        const el = document.createElement("div");
+        el.className = "origin-marker";
+        el.style.background = originColor(index);
+        el.textContent = row.id || String(index + 1);
+        bulkMarkers.push(
+          new maplibregl.Marker({ element: el }).setLngLat([row.lon, row.lat]).addTo(map),
+        );
+      });
+    }
+
+    function newBulkRow(partial = {}) {
+      return {
+        key: bulkRowSeq++,
+        id: partial.id == null ? "" : String(partial.id),
+        lat: partial.lat == null || partial.lat === "" ? "" : Number(partial.lat),
+        lon: partial.lon == null || partial.lon === "" ? "" : Number(partial.lon),
+      };
+    }
+
+    function filledBulkRows() {
+      return bulkRows.filter((row) => Number.isFinite(row.lat) && Number.isFinite(row.lon));
+    }
+
+    function renderBulkTable() {
+      const tbody = document.getElementById("bulk-tbody");
+      tbody.innerHTML = bulkRows.map((row) => `
+        <tr data-key="${row.key}">
+          <td class="id-cell">
+            <input data-field="id" value="${escapeAttr(row.id)}" placeholder="auto" />
+          </td>
+          <td>
+            <input data-field="lat" type="number" step="any" min="-90" max="90" value="${row.lat === "" ? "" : row.lat}" placeholder="lat" />
+          </td>
+          <td>
+            <input data-field="lon" type="number" step="any" min="-180" max="180" value="${row.lon === "" ? "" : row.lon}" placeholder="lon" />
+          </td>
+          <td>
+            <button type="button" class="remove-row" data-remove="${row.key}" aria-label="Remove row">×</button>
+          </td>
+        </tr>
+      `).join("");
+      tbody.querySelectorAll("input[data-field]").forEach((input) => {
+        input.addEventListener("change", () => {
+          const key = Number(input.closest("tr").dataset.key);
+          const row = bulkRows.find((item) => item.key === key);
+          if (!row) return;
+          const field = input.dataset.field;
+          if (field === "id") {
+            row.id = input.value.trim();
+          } else {
+            const value = input.value.trim();
+            row[field] = value === "" ? "" : Number(value);
+          }
+          syncBulkMarkers();
+        });
+      });
+      tbody.querySelectorAll("[data-remove]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const key = Number(button.dataset.remove);
+          bulkRows = bulkRows.filter((row) => row.key !== key);
+          if (!bulkRows.length) bulkRows = [newBulkRow()];
+          renderBulkTable();
+          syncBulkMarkers();
+        });
+      });
+    }
+
+    function ensureBulkRows() {
+      if (bulkRows.length) return;
+      bulkRows = Array.from({ length: DEFAULT_BULK_ROWS }, () => newBulkRow());
+      renderBulkTable();
+    }
+
+    function openBulkPanel() {
+      closePanel({ keepLayers: true });
+      ensureBulkRows();
+      bulkPanel.classList.add("open");
+      bulkPanel.setAttribute("aria-hidden", "false");
+      document.body.classList.add("panel-open", "bulk-open");
+      syncBulkMarkers();
+    }
+
+    function closeBulkPanel({ keepLayers = true, keepMarkers = true } = {}) {
+      bulkPanel.classList.remove("open");
+      bulkPanel.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("bulk-open");
+      if (!panel.classList.contains("open")) document.body.classList.remove("panel-open");
+      showMapLoader(false);
+      if (!keepMarkers) clearBulkMarkers();
+      if (!keepLayers) clearResultLayers();
+    }
+
+    function splitCsvLine(line) {
+      return line.split(/[,;\t]+/).map((part) => part.trim()).filter((part) => part.length);
+    }
+
+    function parseOriginsText(text) {
+      const lines = String(text)
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("#"));
+      if (!lines.length) return [];
+      const first = splitCsvLine(lines[0]).map((item) => item.toLowerCase());
+      const headerAliases = new Set(["lat", "latitude", "lon", "lng", "longitude", "id", "origin_id"]);
+      const hasHeader = first.some((item) => headerAliases.has(item));
+      const rows = [];
+      const start = hasHeader ? 1 : 0;
+      for (const line of lines.slice(start)) {
+        const parts = splitCsvLine(line);
+        if (hasHeader) {
+          const rec = {};
+          first.forEach((key, index) => { rec[key] = parts[index]; });
+          const lat = Number(rec.lat ?? rec.latitude);
+          const lon = Number(rec.lon ?? rec.lng ?? rec.longitude);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+          rows.push({ id: rec.id || rec.origin_id || "", lat, lon });
+          continue;
+        }
+        if (parts.length === 2) {
+          let lat = Number(parts[0]);
+          let lon = Number(parts[1]);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+          if (Math.abs(lat) > 90 && Math.abs(lon) <= 90) {
+            [lat, lon] = [lon, lat];
+          }
+          rows.push({ id: "", lat, lon });
+        } else if (parts.length >= 3) {
+          const lat = Number(parts[1]);
+          const lon = Number(parts[2]);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+          rows.push({ id: parts[0], lat, lon });
+        }
+      }
+      return rows;
+    }
+
+    function parseGeoJSONOrigins(payload) {
+      const features = payload.type === "FeatureCollection"
+        ? payload.features || []
+        : payload.type === "Feature"
+          ? [payload]
+          : [];
+      return features
+        .filter((feature) => feature.geometry && feature.geometry.type === "Point")
+        .map((feature) => {
+          const [lon, lat] = feature.geometry.coordinates;
+          const props = feature.properties || {};
+          const id = feature.id ?? props.id ?? props.origin_id ?? "";
+          return { id: id == null ? "" : String(id), lat, lon };
+        })
+        .filter((row) => Number.isFinite(row.lat) && Number.isFinite(row.lon));
+    }
+
+    function loadBulkRows(rows) {
+      if (!rows.length) return;
+      bulkRows = rows.map((row) => newBulkRow(row));
+      renderBulkTable();
+      syncBulkMarkers();
+      const filled = filledBulkRows();
+      if (filled.length) {
+        fitFeatures(filled.map((row) => ({
+          geometry: { type: "Point", coordinates: [row.lon, row.lat] },
+        })));
+      }
+    }
+
+    function addOriginFromMap(lngLat) {
+      const empty = bulkRows.find((row) => row.lat === "" || row.lon === "");
+      if (empty) {
+        empty.lat = lngLat.lat;
+        empty.lon = lngLat.lng;
+      } else {
+        bulkRows.push(newBulkRow({ lat: lngLat.lat, lon: lngLat.lng }));
+      }
+      renderBulkTable();
+      syncBulkMarkers();
+    }
+
+    function assignOriginIds(rows) {
+      const used = new Set();
+      for (const row of rows) {
+        if (!row.id) continue;
+        if (used.has(row.id)) {
+          throw new Error(`Duplicate origin id “${row.id}”. Each starting point needs a unique id.`);
+        }
+        used.add(row.id);
+      }
+      let next = 1;
+      return rows.map((row) => {
+        if (row.id) return row;
+        while (used.has(String(next))) next += 1;
+        const id = String(next);
+        used.add(id);
+        next += 1;
+        return { ...row, id };
+      });
+    }
+
+    function renderResultControls(collection, options = {}) {
+      const bulk = Boolean(options.bulk);
+      const results = document.getElementById(bulk ? "bulk-results" : "iso-results");
+      const toggles = document.getElementById(bulk ? "bulk-layer-toggles" : "layer-toggles");
+      const originBox = bulk ? document.getElementById("bulk-origin-toggles") : null;
+      const features = collection.features || [];
       const kinds = [...new Set(
-        (collection.features || [])
+        features
           .map((feature) => feature.properties && feature.properties.kind)
           .filter((kind) => kind && LAYER_GROUPS[kind]),
       )];
+      enabledKinds = new Set(kinds);
       toggles.innerHTML = kinds.map((kind) => `
         <label>
           <input type="checkbox" data-kind="${kind}" checked />
@@ -646,16 +1359,45 @@
       `).join("");
       toggles.querySelectorAll("input[data-kind]").forEach((input) => {
         input.addEventListener("change", () => {
-          setLayersVisible(LAYER_GROUPS[input.dataset.kind], input.checked);
+          if (input.checked) enabledKinds.add(input.dataset.kind);
+          else enabledKinds.delete(input.dataset.kind);
+          applyLayerFilters();
         });
       });
+      if (originBox) {
+        const origins = options.origins || [];
+        if (origins.length > 1) {
+          enabledOriginIds = origins.map((item) => item.id);
+          originBox.innerHTML = origins.map((item, index) => `
+            <label>
+              <input type="checkbox" data-origin="${item.id}" checked />
+              <span class="origin-swatch" style="background:${originColor(index)}"></span>
+              ${item.id}
+              <span class="hint">${item.lat.toFixed(4)}, ${item.lon.toFixed(4)}</span>
+            </label>
+          `).join("");
+          originBox.querySelectorAll("input[data-origin]").forEach((input) => {
+            input.addEventListener("change", () => {
+              enabledOriginIds = [...originBox.querySelectorAll("input[data-origin]:checked")]
+                .map((item) => item.dataset.origin);
+              applyLayerFilters();
+            });
+          });
+        } else {
+          originBox.innerHTML = "";
+          enabledOriginIds = null;
+        }
+      } else {
+        enabledOriginIds = null;
+      }
+      applyLayerFilters();
       results.classList.add("visible");
     }
 
     function downloadGeoJSON(collection) {
       const meta = collection.metadata || {};
       const stamp = [
-        meta.travel_type || "iso",
+        meta.travel_type || (meta.count != null ? `batch-${meta.count}` : "iso"),
         meta.travel_time_min != null ? `${meta.travel_time_min}min` : "result",
       ].join("-");
       const blob = new Blob([JSON.stringify(collection, null, 2)], {
@@ -673,9 +1415,7 @@
       const status = document.getElementById("iso-status");
       const results = document.getElementById("iso-results");
       const button = form.querySelector("button[type='submit']");
-      const selected = [...form.querySelectorAll("input[name='include']:checked")].map(
-        (input) => input.value,
-      );
+      const selected = selectedInclude(form);
       if (!selected.length) {
         status.classList.add("error");
         status.textContent = "Select at least one return layer.";
@@ -700,27 +1440,16 @@
       results.classList.remove("visible");
       status.textContent = "Computing… this can take a while on first run.";
       button.disabled = true;
-      showMapLoader(true);
+      showMapLoader(true, "Computing isochrone…");
       try {
         const response = await fetch(`${API}/isochrone?${params}`);
         const payload = await response.json();
         if (!response.ok) {
-          throw new Error(payload.detail || response.statusText);
+          throw new Error(errorDetail(payload, response.statusText));
         }
         lastCollection = payload;
-        const polygons = { type: "FeatureCollection", features: [] };
-        const lines = { type: "FeatureCollection", features: [] };
-        for (const feature of payload.features || []) {
-          const type = feature.geometry && feature.geometry.type;
-          if (type === "LineString" || type === "MultiLineString") {
-            lines.features.push(feature);
-          } else {
-            polygons.features.push(feature);
-          }
-        }
         resetResultLayers();
-        setSourceData("isochrone-fill", polygons);
-        setSourceData("isochrone-line", lines);
+        paintCollections([payload]);
         status.textContent = `Rendered ${payload.features.length} feature(s).`;
         renderResultControls(payload);
       } catch (error) {
@@ -732,21 +1461,175 @@
       }
     }
 
+    async function computeBulk() {
+      const status = document.getElementById("bulk-status");
+      const results = document.getElementById("bulk-results");
+      const button = bulkForm.querySelector("button[type='submit']");
+      const selected = selectedInclude(bulkForm);
+      if (!selected.length) {
+        status.classList.add("error");
+        status.textContent = "Select at least one return layer.";
+        return;
+      }
+      let origins;
+      try {
+        origins = assignOriginIds(filledBulkRows());
+      } catch (error) {
+        status.classList.add("error");
+        status.textContent = error.message;
+        return;
+      }
+      if (!origins.length) {
+        status.classList.add("error");
+        status.textContent = "Add at least one origin with latitude and longitude.";
+        return;
+      }
+      origins.forEach((origin) => {
+        const row = bulkRows.find((item) => item.key === origin.key);
+        if (row) row.id = origin.id;
+      });
+      renderBulkTable();
+      syncBulkMarkers();
+      const body = {
+        origins: origins.map((item) => ({ lat: item.lat, lon: item.lon, id: item.id })),
+        travel_time_min: Number(bulkForm.travel_time_min.value),
+        travel_type: bulkForm.travel_type.value,
+        include: selected,
+      };
+      const buffer = Number(bulkForm.buffer_meters.value);
+      if (Number.isFinite(buffer) && buffer > 0) body.buffer_meters = buffer;
+      if (selected.includes("h3")) {
+        const resolution = Number(bulkForm.h3_resolution.value);
+        if (Number.isFinite(resolution)) body.h3_resolution = resolution;
+      }
+      status.classList.remove("error");
+      results.classList.remove("visible");
+      status.textContent = `Computing ${origins.length} isochrone(s) in parallel…`;
+      button.disabled = true;
+      showMapLoader(true, `Computing ${origins.length} isochrones…`);
+      try {
+        const response = await fetch(`${API}/isochrone/batch`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(errorDetail(payload, response.statusText));
+        }
+        const collections = payload.collections || [];
+        lastCollection = combinedCollection(collections);
+        resetResultLayers();
+        paintCollections(collections);
+        const featureCount = lastCollection.features.length;
+        status.textContent = `Rendered ${collections.length} origin(s), ${featureCount} feature(s). Toggle origins below to isolate overlapping layers.`;
+        renderResultControls(lastCollection, { bulk: true, origins });
+      } catch (error) {
+        status.classList.add("error");
+        status.textContent = error.message;
+      } finally {
+        showMapLoader(false);
+        button.disabled = false;
+      }
+    }
+
     form.buffer_meters.value = String(DEFAULT_BUFFER_METERS);
+    bulkForm.buffer_meters.value = String(DEFAULT_BUFFER_METERS);
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       if (lastLngLat) computeIsochrone(lastLngLat);
     });
+    bulkForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      computeBulk();
+    });
     document.getElementById("download-geojson").addEventListener("click", () => {
       if (lastCollection) downloadGeoJSON(lastCollection);
     });
-    document.getElementById("panel-close").addEventListener("click", closePanel);
+    document.getElementById("bulk-download").addEventListener("click", () => {
+      if (lastCollection) downloadGeoJSON(lastCollection);
+    });
+    document.getElementById("panel-close").addEventListener("click", () => closePanel());
+    document.getElementById("bulk-close").addEventListener("click", () => closeBulkPanel());
+    document.getElementById("bulk-open").addEventListener("click", openBulkPanel);
+    document.getElementById("bulk-add").addEventListener("click", () => {
+      bulkRows.push(newBulkRow());
+      renderBulkTable();
+      const latInput = document.querySelector("#bulk-tbody tr:last-child input[data-field='lat']");
+      if (latInput) latInput.focus();
+    });
+    document.getElementById("bulk-paste-apply").addEventListener("click", () => {
+      const rows = parseOriginsText(document.getElementById("bulk-paste").value);
+      if (!rows.length) {
+        document.getElementById("bulk-status").classList.add("error");
+        document.getElementById("bulk-status").textContent = "Could not parse any coordinates.";
+        return;
+      }
+      loadBulkRows(rows);
+    });
+    const importHelpModal = document.getElementById("import-help-modal");
+    const importHelpButton = document.getElementById("bulk-import-help");
+
+    function openImportHelp() {
+      importHelpModal.classList.add("open");
+      importHelpModal.setAttribute("aria-hidden", "false");
+      const closeBtn = importHelpModal.querySelector("[data-import-help-close].panel-close");
+      if (closeBtn) closeBtn.focus();
+    }
+
+    function closeImportHelp() {
+      importHelpModal.classList.remove("open");
+      importHelpModal.setAttribute("aria-hidden", "true");
+      if (importHelpButton) importHelpButton.focus();
+    }
+
+    importHelpButton.addEventListener("click", openImportHelp);
+    importHelpButton.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openImportHelp();
+      }
+    });
+    importHelpModal.addEventListener("click", (event) => {
+      if (event.target.closest("[data-import-help-close]")) closeImportHelp();
+    });
+    document.getElementById("bulk-file").addEventListener("change", async (event) => {
+      const file = event.target.files && event.target.files[0];
+      event.target.value = "";
+      if (!file) return;
+      const text = await file.text();
+      let rows = [];
+      try {
+        if (/\.geojson$|\.json$/i.test(file.name) || text.trim().startsWith("{") || text.trim().startsWith("[")) {
+          rows = parseGeoJSONOrigins(JSON.parse(text));
+        }
+      } catch (_error) {
+        rows = [];
+      }
+      if (!rows.length) rows = parseOriginsText(text);
+      if (!rows.length) {
+        document.getElementById("bulk-status").classList.add("error");
+        document.getElementById("bulk-status").textContent = `No point coordinates found in ${file.name}.`;
+        return;
+      }
+      loadBulkRows(rows);
+    });
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && panel.classList.contains("open")) closePanel();
+      if (event.key !== "Escape") return;
+      if (importHelpModal.classList.contains("open")) {
+        closeImportHelp();
+        return;
+      }
+      if (bulkPanel.classList.contains("open")) closeBulkPanel();
+      else if (panel.classList.contains("open")) closePanel();
     });
     attachGeocoder().finally(addNavigationControl);
 
     map.on("click", (event) => {
+      if (bulkPanel.classList.contains("open")) {
+        addOriginFromMap(event.lngLat);
+        return;
+      }
       openPanel(event.lngLat);
     });
 

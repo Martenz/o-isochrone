@@ -8,6 +8,8 @@ from oisochron.config import Settings
 
 
 class TravelType(str, Enum):
+    """Travel mode used for average speed and the OSM highway filter."""
+
     foot = "foot"
     car = "car"
     bicycle = "bicycle"

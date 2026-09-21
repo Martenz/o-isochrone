@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import asyncio
+from collections.abc import Iterable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 import geopandas as gpd
@@ -28,15 +32,57 @@ from oisochron.speeds import (
 _DEFAULT_BUFFER_METERS = 10.0
 _CONCAVE_HULL_RATIO = 0.3
 _DEFAULT_H3_RESOLUTION = 10
+DEFAULT_BATCH_CONCURRENCY = 4
 
-INCLUDE_LAYERS = (
-    "lines",
-    "buffered_lines",
-    "filled_buffer",
-    "convex_hull",
-    "concave_hull",
-    "h3",
-)
+
+@dataclass(frozen=True, slots=True)
+class IsochroneOrigin:
+    """One starting point for a single or batch isochrone computation.
+
+    ``id`` is optional. Batch helpers assign incremental string ids
+    (``"1"``, ``"2"``, …) when it is omitted, skipping any ids already
+    provided by other origins. Per-origin travel parameters override the
+    values passed to :func:`compute_isochrones` / :func:`compute_isochrones_async`.
+    """
+
+    lat: float
+    lon: float
+    id: str | None = None
+    travel_time_min: float | None = None
+    travel_type: str | TravelType | None = None
+    include: str | Iterable[str] | None = None
+    buffer_meters: float | None = None
+    h3_resolution: int | None = None
+
+    def __post_init__(self) -> None:
+        try:
+            lat = float(self.lat)
+            lon = float(self.lon)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("lat and lon must be numbers") from exc
+        if not -90.0 <= lat <= 90.0:
+            raise ValueError("lat must be between -90 and 90")
+        if not -180.0 <= lon <= 180.0:
+            raise ValueError("lon must be between -180 and 180")
+        object.__setattr__(self, "lat", lat)
+        object.__setattr__(self, "lon", lon)
+        if self.id is not None:
+            ident = str(self.id).strip()
+            object.__setattr__(self, "id", ident or None)
+
+
+class IncludeLayer(str, Enum):
+    """GeoJSON layer that can be returned by an isochrone request."""
+
+    lines = "lines"
+    buffered_lines = "buffered_lines"
+    filled_buffer = "filled_buffer"
+    convex_hull = "convex_hull"
+    concave_hull = "concave_hull"
+    h3 = "h3"
+
+
+INCLUDE_LAYERS = tuple(layer.value for layer in IncludeLayer)
 _INCLUDE_ALIASES = {
     "both": ("lines", "filled_buffer"),
     "polygon": ("filled_buffer",),
@@ -56,6 +102,7 @@ def compute_isochrone(
     include: str | Iterable[str] | None = None,
     buffer_meters: float | None = None,
     h3_resolution: int | None = None,
+    origin_id: str | int | None = None,
     settings: Settings | None = None,
 ) -> dict[str, Any]:
     """Download the nearby OSM roads and compute an isochrone.
@@ -77,6 +124,10 @@ def compute_isochrone(
         Corridor width for ``buffered_lines`` and ``filled_buffer`` (default 10).
     h3_resolution:
         Uber H3 resolution (0–15) when ``h3`` is included. Default 10.
+    origin_id:
+        Optional identifier stamped on the FeatureCollection metadata and
+        every feature (``properties.origin_id``) so overlapping batch
+        results can be filtered per starting point.
 
     Returns
     -------
@@ -98,8 +149,247 @@ def compute_isochrone(
         include=layers,
         buffer_meters=buffer_meters,
         h3_resolution=h3_resolution,
+        origin_id=origin_id,
         settings=settings,
     )
+
+
+def compute_isochrones(
+    origins: Sequence[IsochroneOrigin | Mapping[str, Any]],
+    travel_time_min: float | None = None,
+    travel_type: str | TravelType | None = None,
+    *,
+    include: str | Iterable[str] | None = None,
+    buffer_meters: float | None = None,
+    h3_resolution: int | None = None,
+    max_concurrency: int = DEFAULT_BATCH_CONCURRENCY,
+    settings: Settings | None = None,
+) -> list[dict[str, Any]]:
+    """Compute isochrones for many origins, in parallel.
+
+    Each origin is an :class:`IsochroneOrigin` (or a mapping with ``lat`` /
+    ``lon`` and optional ``id``). Shared travel parameters apply to every
+    origin unless the origin supplies its own. Missing ids become ``"1"``,
+    ``"2"``, … (skipping ids already taken).
+
+    Returns one GeoJSON FeatureCollection per origin, in input order. Each
+    collection and its features carry ``origin_id``.
+
+    This synchronous helper uses a thread pool so it works inside Jupyter
+    notebooks. Prefer :func:`compute_isochrones_async` from async code.
+    """
+    jobs = _prepare_batch_jobs(
+        origins,
+        travel_time_min=travel_time_min,
+        travel_type=travel_type,
+        include=include,
+        buffer_meters=buffer_meters,
+        h3_resolution=h3_resolution,
+        settings=settings,
+    )
+    workers = _batch_workers(max_concurrency, len(jobs))
+    if workers == 1:
+        return [_run_batch_job(job) for job in jobs]
+    results: list[dict[str, Any] | None] = [None] * len(jobs)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_run_batch_job, job): index for index, job in enumerate(jobs)}
+        for future in futures:
+            results[futures[future]] = future.result()
+    return results  # type: ignore[return-value]
+
+
+async def compute_isochrones_async(
+    origins: Sequence[IsochroneOrigin | Mapping[str, Any]],
+    travel_time_min: float | None = None,
+    travel_type: str | TravelType | None = None,
+    *,
+    include: str | Iterable[str] | None = None,
+    buffer_meters: float | None = None,
+    h3_resolution: int | None = None,
+    max_concurrency: int = DEFAULT_BATCH_CONCURRENCY,
+    settings: Settings | None = None,
+) -> list[dict[str, Any]]:
+    """Async counterpart of :func:`compute_isochrones`.
+
+    Origins run concurrently (capped by ``max_concurrency``) via
+    ``asyncio.to_thread``. Returns one FeatureCollection per origin.
+    """
+    jobs = _prepare_batch_jobs(
+        origins,
+        travel_time_min=travel_time_min,
+        travel_type=travel_type,
+        include=include,
+        buffer_meters=buffer_meters,
+        h3_resolution=h3_resolution,
+        settings=settings,
+    )
+    workers = _batch_workers(max_concurrency, len(jobs))
+    semaphore = asyncio.Semaphore(workers)
+
+    async def run(job: _BatchJob) -> dict[str, Any]:
+        async with semaphore:
+            return await asyncio.to_thread(_run_batch_job, job)
+
+    return list(await asyncio.gather(*[run(job) for job in jobs]))
+
+
+@dataclass(frozen=True, slots=True)
+class _BatchJob:
+    origin: IsochroneOrigin
+    travel_time_min: float
+    travel_type: str | TravelType
+    include: str | Iterable[str] | None
+    buffer_meters: float | None
+    h3_resolution: int | None
+    settings: Settings | None
+
+
+def _batch_workers(max_concurrency: int, count: int) -> int:
+    try:
+        workers = int(max_concurrency)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("max_concurrency must be an integer") from exc
+    if workers < 1:
+        raise ValueError("max_concurrency must be at least 1")
+    return max(1, min(workers, count))
+
+
+def coerce_origin(value: IsochroneOrigin | Mapping[str, Any]) -> IsochroneOrigin:
+    """Build an :class:`IsochroneOrigin` from a dataclass, mapping, or similar object."""
+    if isinstance(value, IsochroneOrigin):
+        return value
+    if not isinstance(value, Mapping):
+        data = {
+            "lat": getattr(value, "lat", getattr(value, "latitude", None)),
+            "lon": getattr(value, "lon", getattr(value, "lng", getattr(value, "longitude", None))),
+            "id": getattr(value, "id", getattr(value, "origin_id", None)),
+            "travel_time_min": getattr(value, "travel_time_min", None),
+            "travel_type": getattr(value, "travel_type", None),
+            "include": getattr(value, "include", None),
+            "buffer_meters": getattr(value, "buffer_meters", None),
+            "h3_resolution": getattr(value, "h3_resolution", None),
+        }
+        if data["lat"] is None or data["lon"] is None:
+            raise TypeError(
+                "origin must be IsochroneOrigin, a mapping with lat/lon, "
+                "or an object with lat and lon attributes"
+            )
+        value = {key: item for key, item in data.items() if item is not None}
+    lat = value.get("lat", value.get("latitude"))
+    lon = value.get("lon", value.get("lng", value.get("longitude")))
+    if lat is None or lon is None:
+        raise ValueError("each origin requires lat and lon")
+    ident = value.get("id", value.get("origin_id"))
+    return IsochroneOrigin(
+        lat=lat,
+        lon=lon,
+        id=None if ident is None else ident,
+        travel_time_min=value.get("travel_time_min"),
+        travel_type=value.get("travel_type"),
+        include=value.get("include"),
+        buffer_meters=value.get("buffer_meters"),
+        h3_resolution=value.get("h3_resolution"),
+    )
+
+
+def assign_origin_ids(
+    origins: Sequence[IsochroneOrigin | Mapping[str, Any]],
+) -> list[IsochroneOrigin]:
+    """Return origins with unique string ids, filling gaps incrementally from 1."""
+    coerced = [coerce_origin(item) for item in origins]
+    if not coerced:
+        raise ValueError("origins must contain at least one point")
+    used: set[str] = set()
+    for origin in coerced:
+        if origin.id is None:
+            continue
+        if origin.id in used:
+            raise ValueError(f"duplicate origin id {origin.id!r}")
+        used.add(origin.id)
+    next_n = 1
+    assigned: list[IsochroneOrigin] = []
+    for origin in coerced:
+        ident = origin.id
+        if ident is None:
+            while str(next_n) in used:
+                next_n += 1
+            ident = str(next_n)
+            used.add(ident)
+            next_n += 1
+        assigned.append(
+            IsochroneOrigin(
+                lat=origin.lat,
+                lon=origin.lon,
+                id=ident,
+                travel_time_min=origin.travel_time_min,
+                travel_type=origin.travel_type,
+                include=origin.include,
+                buffer_meters=origin.buffer_meters,
+                h3_resolution=origin.h3_resolution,
+            )
+        )
+    return assigned
+
+
+def _prepare_batch_jobs(
+    origins: Sequence[IsochroneOrigin | Mapping[str, Any]],
+    *,
+    travel_time_min: float | None,
+    travel_type: str | TravelType | None,
+    include: str | Iterable[str] | None,
+    buffer_meters: float | None,
+    h3_resolution: int | None,
+    settings: Settings | None,
+) -> list[_BatchJob]:
+    prepared = assign_origin_ids(origins)
+    jobs: list[_BatchJob] = []
+    for origin in prepared:
+        minutes = origin.travel_time_min if origin.travel_time_min is not None else travel_time_min
+        mode = origin.travel_type if origin.travel_type is not None else travel_type
+        if minutes is None:
+            raise ValueError(
+                f"origin {origin.id!r} is missing travel_time_min "
+                "(pass it on the origin or as a batch default)"
+            )
+        if mode is None:
+            raise ValueError(
+                f"origin {origin.id!r} is missing travel_type "
+                "(pass it on the origin or as a batch default)"
+            )
+        jobs.append(
+            _BatchJob(
+                origin=origin,
+                travel_time_min=minutes,
+                travel_type=mode,
+                include=origin.include if origin.include is not None else include,
+                buffer_meters=(
+                    origin.buffer_meters if origin.buffer_meters is not None else buffer_meters
+                ),
+                h3_resolution=(
+                    origin.h3_resolution if origin.h3_resolution is not None else h3_resolution
+                ),
+                settings=settings,
+            )
+        )
+    return jobs
+
+
+def _run_batch_job(job: _BatchJob) -> dict[str, Any]:
+    origin = job.origin
+    try:
+        return compute_isochrone(
+            origin.lat,
+            origin.lon,
+            job.travel_time_min,
+            job.travel_type,
+            include=job.include,
+            buffer_meters=job.buffer_meters,
+            h3_resolution=job.h3_resolution,
+            origin_id=origin.id,
+            settings=job.settings,
+        )
+    except (ValueError, IsochroneError) as exc:
+        raise IsochroneError(f"origin {origin.id!r}: {exc}") from exc
 
 
 def isochrone_from_graph(
@@ -112,6 +402,7 @@ def isochrone_from_graph(
     include: str | Iterable[str] | None = None,
     buffer_meters: float | None = None,
     h3_resolution: int | None = None,
+    origin_id: str | int | None = None,
     settings: Settings | None = None,
 ) -> dict[str, Any]:
     """Compute isochrone GeoJSON from an already-loaded OSMnx graph."""
@@ -137,11 +428,14 @@ def isochrone_from_graph(
     if lines.is_empty and reachable.number_of_nodes() == 0:
         raise IsochroneError("No reachable roads from the origin within the travel time.")
 
-    shared = {
+    origin_key = None if origin_id is None else str(origin_id).strip() or None
+    shared: dict[str, Any] = {
         "travel_type": mode.value,
         "travel_time_min": travel_time_min,
         "speed_kph": kmh,
     }
+    if origin_key is not None:
+        shared["origin_id"] = origin_key
     features: list[dict[str, Any]] = []
     for kind in layers:
         if kind == "h3":
@@ -155,20 +449,20 @@ def isochrone_from_graph(
             props["concave_ratio"] = _CONCAVE_HULL_RATIO
         features.append(feature(geom, props))
 
-    return feature_collection(
-        features,
-        metadata={
-            "lat": lat,
-            "lon": lon,
-            "travel_time_min": travel_time_min,
-            "travel_type": mode.value,
-            "speed_kph": kmh,
-            "include": list(layers),
-            "buffer_meters": width,
-            "h3_resolution": resolution if "h3" in layers else None,
-            "origin_node": int(origin) if _is_int_like(origin) else origin,
-        },
-    )
+    metadata: dict[str, Any] = {
+        "lat": lat,
+        "lon": lon,
+        "travel_time_min": travel_time_min,
+        "travel_type": mode.value,
+        "speed_kph": kmh,
+        "include": list(layers),
+        "buffer_meters": width,
+        "h3_resolution": resolution if "h3" in layers else None,
+        "origin_node": int(origin) if _is_int_like(origin) else origin,
+    }
+    if origin_key is not None:
+        metadata["origin_id"] = origin_key
+    return feature_collection(features, metadata=metadata)
 
 
 def parse_include(value: str | Iterable[str] | None) -> tuple[str, ...]:

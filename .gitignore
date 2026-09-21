@@ -30,3 +30,7 @@ data/cache/
 data/tmp/
 !data/extent.geojson
 !data/.gitkeep
+
+# Jupyter
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/

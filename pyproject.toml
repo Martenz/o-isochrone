@@ -36,6 +36,11 @@ api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
 ]
+notebooks = [
+    "jupyter>=1.1",
+    "ipykernel>=6.29",
+    "matplotlib>=3.9",
+]
 
 [project.urls]
 Homepage = "https://github.com/martinoboni/oisochron"
@@ -61,4 +66,4 @@ package = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
