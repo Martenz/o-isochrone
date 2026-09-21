@@ -1,0 +1,20 @@
+{
+  "type": "Feature",
+  "properties": {
+    "kind": "network_extent",
+    "name": "Italy",
+    "source": "configured OSM extract"
+  },
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [6.627, 35.493],
+        [18.521, 35.493],
+        [18.521, 47.092],
+        [6.627, 47.092],
+        [6.627, 35.493]
+      ]
+    ]
+  }
+}

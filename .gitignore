@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+# uv
+*.egg-info/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# OSM extracts and OSMnx cache (keep extent + gitkeep)
+data/*.pbf
+data/*.osm
+data/*.osm.bz2
+data/cache/
+data/tmp/
+!data/extent.geojson
+!data/.gitkeep

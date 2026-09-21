@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>oisochron demo</title>
+  <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #102033;
+      --muted: #5b6b7c;
+      --line: #d7dee6;
+      --accent: #1d4ed8;
+      --panel: rgba(255, 255, 255, 0.94);
+    }
+    html, body, #map { margin: 0; height: 100%; }
+    body { font-family: "Avenir Next", "Segoe UI", sans-serif; color: var(--ink); }
+    #hud {
+      position: absolute;
+      z-index: 2;
+      top: 16px;
+      left: 16px;
+      max-width: 360px;
+      padding: 14px 16px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(16, 32, 51, 0.12);
+    }
+    #hud h1 { margin: 0 0 6px; font-size: 18px; }
+    #hud p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.4; }
+    .popup-form { display: grid; gap: 8px; min-width: 230px; }
+    .popup-form label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
+    .popup-form input, .popup-form select {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 6px 8px;
+      font: inherit;
+      color: var(--ink);
+    }
+    .popup-form button {
+      margin-top: 4px;
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .popup-form button:disabled { opacity: 0.65; cursor: wait; }
+    .status { font-size: 12px; color: var(--muted); min-height: 1.2em; }
+    .status.error { color: #b42318; }
+    .coords { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <h1>oisochron demo</h1>
+    <p>The blue area is the extent of the downloaded OSM road extract. Click the map, set travel parameters, then compute the isochrone. Roads from the extract are not drawn.</p>
+  </div>
+  <div id="map"></div>
+  <script>
+    const API = "/api";
+    const ITALY_BBOX = [6.627, 35.493, 18.521, 47.092];
+
+    const map = new maplibregl.Map({
+      container: "map",
+      style: "https://tiles.openfreemap.org/styles/liberty",
+      center: [12.5, 42.5],
+      zoom: 5.2,
+      pitch: 30,
+      bearing: 0,
+      attributionControl: true,
+    });
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }));
+
+    let marker = null;
+    let lastLngLat = null;
+
+    function extentFeature(geometry, properties = {}) {
+      return {
+        type: "Feature",
+        properties: { kind: "network_extent", ...properties },
+        geometry,
+      };
+    }
+
+    function bboxPolygon([west, south, east, north]) {
+      return {
+        type: "Polygon",
+        coordinates: [[
+          [west, south], [east, south], [east, north], [west, north], [west, south],
+        ]],
+      };
+    }
+
+    function fitExtent(feature) {
+      const coords = feature.geometry.coordinates[0];
+      const bounds = coords.reduce(
+        (b, c) => b.extend(c),
+        new maplibregl.LngLatBounds(coords[0], coords[0]),
+      );
+      map.fitBounds(bounds, { padding: 48, pitch: 30, duration: 800 });
+    }
+
+    function setSourceData(id, data) {
+      const source = map.getSource(id);
+      if (source) source.setData(data);
+    }
+
+    function emptyCollection() {
+      return { type: "FeatureCollection", features: [] };
+    }
+
+    function popupHTML(lngLat) {
+      return `
+        <form class="popup-form" id="iso-form">
+          <div class="coords">${lngLat.lat.toFixed(5)}, ${lngLat.lng.toFixed(5)}</div>
+          <label>Travel time (minutes)
+            <input name="travel_time_min" type="number" min="1" max="120" value="15" required />
+          </label>
+          <label>Travel type
+            <select name="travel_type">
+              <option value="foot">foot</option>
+              <option value="bicycle">bicycle</option>
+              <option value="car">car</option>
+            </select>
+          </label>
+          <label>Return
+            <select name="include">
+              <option value="both">polygon + lines</option>
+              <option value="polygon">polygon only</option>
+              <option value="lines">lines only</option>
+            </select>
+          </label>
+          <label>Line buffer (meters, optional)
+            <input name="buffer_meters" type="number" min="0" step="1" placeholder="empty = raw lines" />
+          </label>
+          <button type="submit">Compute isochrone</button>
+          <div class="status" id="iso-status"></div>
+        </form>
+      `;
+    }
+
+    async function computeIsochrone(lngLat, form) {
+      const status = form.querySelector("#iso-status");
+      const button = form.querySelector("button");
+      const params = new URLSearchParams({
+        lat: String(lngLat.lat),
+        lon: String(lngLat.lng),
+        travel_time_min: form.travel_time_min.value,
+        travel_type: form.travel_type.value,
+        include: form.include.value,
+      });
+      if (form.buffer_meters.value) {
+        params.set("buffer_meters", form.buffer_meters.value);
+      }
+      status.classList.remove("error");
+      status.textContent = "Computing… this can take a while on first run.";
+      button.disabled = true;
+      try {
+        const response = await fetch(`${API}/isochrone?${params}`);
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || response.statusText);
+        }
+        const polygons = { type: "FeatureCollection", features: [] };
+        const lines = { type: "FeatureCollection", features: [] };
+        for (const feature of payload.features || []) {
+          const kind = feature.properties && feature.properties.kind;
+          const type = feature.geometry && feature.geometry.type;
+          if (type === "LineString" || type === "MultiLineString") {
+            lines.features.push(feature);
+          } else {
+            polygons.features.push(feature);
+          }
+          if (kind === "network_buffer") {
+            feature.properties.fillRole = "buffer";
+          }
+        }
+        setSourceData("isochrone-fill", polygons);
+        setSourceData("isochrone-line", lines);
+        status.textContent = `Rendered ${payload.features.length} feature(s).`;
+      } catch (error) {
+        status.classList.add("error");
+        status.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    map.on("load", async () => {
+      let extent = extentFeature(bboxPolygon(ITALY_BBOX));
+      try {
+        const response = await fetch(`${API}/network/extent`);
+        if (response.ok) extent = await response.json();
+      } catch (_error) {
+        // Keep the Italy fallback so the map still has an extent layer.
+      }
+
+      map.addSource("extent", { type: "geojson", data: extent });
+      map.addSource("isochrone-fill", { type: "geojson", data: emptyCollection() });
+      map.addSource("isochrone-line", { type: "geojson", data: emptyCollection() });
+
+      map.addLayer({
+        id: "extent-fill",
+        type: "fill",
+        source: "extent",
+        paint: { "fill-color": "#2563eb", "fill-opacity": 0.08 },
+      });
+      map.addLayer({
+        id: "extent-line",
+        type: "line",
+        source: "extent",
+        paint: { "line-color": "#1d4ed8", "line-width": 2 },
+      });
+      map.addLayer({
+        id: "iso-fill",
+        type: "fill",
+        source: "isochrone-fill",
+        paint: {
+          "fill-color": [
+            "match",
+            ["get", "kind"],
+            "network_buffer", "#0f766e",
+            "#2563eb",
+          ],
+          "fill-opacity": 0.28,
+        },
+      });
+      map.addLayer({
+        id: "iso-outline",
+        type: "line",
+        source: "isochrone-fill",
+        paint: { "line-color": "#1e3a8a", "line-width": 1.5 },
+      });
+      map.addLayer({
+        id: "iso-network",
+        type: "line",
+        source: "isochrone-line",
+        paint: { "line-color": "#0f172a", "line-width": 2.2 },
+      });
+
+      if (extent.geometry) fitExtent(extent);
+
+      map.on("click", (event) => {
+        lastLngLat = event.lngLat;
+        if (marker) marker.remove();
+        marker = new maplibregl.Marker({ color: "#1d4ed8" })
+          .setLngLat(lastLngLat)
+          .setPopup(
+            new maplibregl.Popup({ offset: 16, closeOnClick: false })
+              .setHTML(popupHTML(lastLngLat)),
+          )
+          .addTo(map)
+          .togglePopup();
+
+        const form = document.getElementById("iso-form");
+        form.addEventListener("submit", (submitEvent) => {
+          submitEvent.preventDefault();
+          computeIsochrone(lastLngLat, form);
+        });
+      });
+    });
+  </script>
+</body>
+</html>
