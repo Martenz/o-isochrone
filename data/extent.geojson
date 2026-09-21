@@ -2,18 +2,33 @@
   "type": "Feature",
   "properties": {
     "kind": "network_extent",
-    "name": "Italy",
-    "source": "configured OSM extract"
+    "name": "Italy roads",
+    "source": "/Users/martinoboni/REPO/oisochron/data/italy-roads.osm.pbf"
   },
   "geometry": {
     "type": "Polygon",
     "coordinates": [
       [
-        [6.627, 35.493],
-        [18.521, 35.493],
-        [18.521, 47.092],
-        [6.627, 47.092],
-        [6.627, 35.493]
+        [
+          18.521,
+          35.493
+        ],
+        [
+          18.521,
+          47.092
+        ],
+        [
+          6.627,
+          47.092
+        ],
+        [
+          6.627,
+          35.493
+        ],
+        [
+          18.521,
+          35.493
+        ]
       ]
     ]
   }

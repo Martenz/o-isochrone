@@ -2,10 +2,14 @@
 
 Python library that downloads a **portion** of the OpenStreetMap **road** network with [OSMnx](https://osmnx.readthedocs.io/), then computes a travel-time isochrone.
 
-Given a latitude/longitude, a travel time, and a travel type (`foot`, `car`, `bicycle`), it returns GeoJSON:
+Given a latitude/longitude, a travel time, and a travel type (`foot`, `car`, `bicycle`), it returns GeoJSON layers you can mix:
 
-- a **polygon** for the reachable area
-- a **polyline** (MultiLineString) for the reachable road network
+- **buffered_lines** (default) — metric corridor around the reachable roads
+- **lines** — reachable road polylines
+- **filled_buffer** — the same corridor with enclosed interiors filled (the usual “isochrone polygon”)
+- **convex_hull** — outer envelope of the reachable network (overestimates gaps)
+- **concave_hull** — tighter envelope; can cut through long road segments
+- **h3** — Uber H3 hexagons covering the reachable corridor
 
 Average speeds come from the shared `.env` file (`SPEED_FOOT_KPH`, `SPEED_BICYCLE_KPH`, `SPEED_CAR_KPH`). Aliases such as `feet` and `bicicle` are accepted.
 
@@ -25,8 +29,8 @@ tests/
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/)
-- [osmium-tool](https://osmcode.org/osmium-tool/) if you use a local PBF (`brew install osmium-tool` or `apt install osmium-tool`)
 - Docker and Docker Compose to run the example services
+- Optional: [osmium-tool](https://osmcode.org/osmium-tool/) for a faster PBF filter (`brew install osmium-tool`). The download script falls back to pyosmium.
 
 ## Setup with uv
 
@@ -60,14 +64,15 @@ collection = compute_isochrone(
     lon=9.1900,
     travel_time_min=15,
     travel_type="foot",   # foot | car | bicycle
-    include="both",       # both | polygon | lines
-    buffer_meters=None,   # if set, lines become a buffered polygon
+    include="buffered_lines",  # or "lines,filled_buffer,h3"
+    buffer_meters=10,
+    h3_resolution=10,
 )
 
 extent = get_network_extent()  # GeoJSON polygon of the configured extract
 ```
 
-`include="lines"` plus `buffer_meters=25` returns the reachable roads as a buffered polygon (or MultiPolygon) instead of polylines.
+`include` is a comma-separated (or list) set of layers. Default is `buffered_lines`. Legacy values `both` and `polygon` still work (`both` → `lines,filled_buffer`).
 
 ## OSM road network source
 
@@ -94,6 +99,12 @@ uv run python scripts/download_italy.py
 # optional: uv run python scripts/download_italy.py --drop-full
 ```
 
+Or, without any host tools, use the API image (it already includes osmium):
+
+```bash
+docker compose --profile download run --rm download
+```
+
 That writes `data/italy-roads.osm.pbf` and updates `data/extent.geojson`. OSM data is [ODbL](https://opendatacommons.org/licenses/odbl/).
 
 ## Example API
@@ -103,16 +114,20 @@ uv run uvicorn api.main:app --reload --port 8000
 ```
 
 - `GET /health`
+- `GET /config` (demo geocoder plugin from `.env`)
 - `GET /network/extent`
 - `GET|POST /isochrone` with `lat`, `lon`, `travel_time_min`, `travel_type`
-- optional `include=both|polygon|lines`
-- optional `buffer_meters` (buffers the reachable roads; returned instead of lines)
+- optional `include=buffered_lines` (comma-separated: `lines`, `buffered_lines`, `filled_buffer`, `convex_hull`, `concave_hull`, `h3`)
+- optional `buffer_meters` (corridor width for buffer layers; default 10)
+- optional `h3_resolution` (0–15, default 10 when `h3` is included)
 
 OpenAPI: http://127.0.0.1:8000/docs
 
 ## Example demo
 
-MapLibre + [OpenFreeMap Liberty](https://tiles.openfreemap.org/styles/liberty), default pitch 30°. The map shows only the **extent** of the downloaded road extract (not the roads). Click to drop a marker, fill the API parameters, and compute. Returned GeoJSON is drawn on the map.
+MapLibre + [OpenFreeMap Liberty](https://tiles.openfreemap.org/styles/liberty), default pitch 30°. The map shows only the **extent** of the downloaded road extract (not the roads). Search for an address or coordinates, or click the map, then compute. Returned GeoJSON is drawn on the map.
+
+The search box plugin is selected by `GEOCODER_PLUGIN` in `.env` (default `photon`: Komoot Photon via `maplibre-gl-geocoder`, free, no API key). Other values: `nominatim`, `stadia`, `maptiler`.
 
 ```bash
 docker compose up --build

@@ -17,12 +17,16 @@ def geometry_to_geojson(geom: BaseGeometry) -> dict[str, Any]:
 def feature(
     geom: BaseGeometry,
     properties: Mapping[str, Any] | None = None,
+    feature_id: str | int | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "type": "Feature",
         "properties": dict(properties or {}),
         "geometry": geometry_to_geojson(geom),
     }
+    if feature_id is not None:
+        payload["id"] = feature_id
+    return payload
 
 
 def feature_collection(

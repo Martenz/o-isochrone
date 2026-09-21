@@ -2,7 +2,7 @@
 
 from oisochron.config import Settings, get_settings
 from oisochron.exceptions import IsochroneError
-from oisochron.isochrone import compute_isochrone, isochrone_from_graph
+from oisochron.isochrone import compute_isochrone, isochrone_from_graph, parse_include
 from oisochron.network import network_extent_geojson
 from oisochron.speeds import TravelType, parse_travel_type, speed_kph
 
@@ -18,6 +18,7 @@ __all__ = [
     "get_network_extent",
     "get_settings",
     "isochrone_from_graph",
+    "parse_include",
     "parse_travel_type",
     "speed_kph",
     "__version__",

@@ -35,17 +35,7 @@ def _progress(prefix: str):
     return hook
 
 
-def _require_osmium() -> str:
-    path = shutil.which("osmium")
-    if path is None:
-        raise SystemExit(
-            "osmium is required. Install osmium-tool (e.g. `brew install osmium-tool` "
-            "or `apt install osmium-tool`)."
-        )
-    return path
-
-
-def _bbox_from_pbf(osmium: str, pbf: Path) -> tuple[float, float, float, float]:
+def _bbox_from_osmium(osmium: str, pbf: Path) -> tuple[float, float, float, float] | None:
     result = subprocess.run(
         [osmium, "fileinfo", "--extended", "--json", str(pbf)],
         check=True,
@@ -61,9 +51,71 @@ def _bbox_from_pbf(osmium: str, pbf: Path) -> tuple[float, float, float, float]:
     data_box = ((info.get("data") or {}).get("bbox")) or None
     if data_box:
         return float(data_box[0]), float(data_box[1]), float(data_box[2]), float(data_box[3])
+    return None
 
-    settings = get_settings()
-    return settings.osm_bbox
+
+def _bbox_from_pyosmium(pbf: Path) -> tuple[float, float, float, float] | None:
+    import osmium
+
+    reader = osmium.io.Reader(str(pbf))
+    try:
+        box = reader.header().box()
+        if box is not None and box.valid():
+            return (
+                float(box.bottom_left.lon),
+                float(box.bottom_left.lat),
+                float(box.top_right.lon),
+                float(box.top_right.lat),
+            )
+    finally:
+        reader.close()
+    return None
+
+
+def _filter_highways_osmium(osmium: str, source: Path, dest: Path) -> None:
+    subprocess.run(
+        [osmium, "tags-filter", str(source), "w/highway", "-o", str(dest)],
+        check=True,
+    )
+
+
+def _filter_highways_pyosmium(source: Path, dest: Path) -> None:
+    import osmium
+
+    class CollectNodes(osmium.SimpleHandler):
+        def __init__(self) -> None:
+            super().__init__()
+            self.node_ids: set[int] = set()
+
+        def way(self, way: osmium.osm.Way) -> None:
+            if "highway" in way.tags:
+                self.node_ids.update(node.ref for node in way.nodes)
+
+    class WriteHighways(osmium.SimpleHandler):
+        def __init__(self, writer: osmium.SimpleWriter, node_ids: set[int]) -> None:
+            super().__init__()
+            self.writer = writer
+            self.node_ids = node_ids
+
+        def node(self, node: osmium.osm.Node) -> None:
+            if node.id in self.node_ids:
+                self.writer.add_node(node)
+
+        def way(self, way: osmium.osm.Way) -> None:
+            if "highway" in way.tags:
+                self.writer.add_way(way)
+
+    print("  pass 1/2: collecting highway node ids (pyosmium)")
+    collector = CollectNodes()
+    collector.apply_file(str(source))
+    print(f"  kept {len(collector.node_ids):,} nodes referenced by highway ways")
+
+    writer = osmium.SimpleWriter(str(dest))
+    try:
+        print("  pass 2/2: writing highway extract")
+        WriteHighways(writer, collector.node_ids).apply_file(str(source))
+    finally:
+        writer.close()
 
 
 def download(url: str, dest: Path) -> None:
@@ -73,15 +125,28 @@ def download(url: str, dest: Path) -> None:
     print()
 
 
-def filter_highways(osmium: str, source: Path, dest: Path) -> None:
+def filter_highways(source: Path, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists():
         dest.unlink()
-    print(f"Filtering highway=* ways into {dest}")
-    subprocess.run(
-        [osmium, "tags-filter", str(source), "w/highway", "-o", str(dest)],
-        check=True,
-    )
+
+    osmium = shutil.which("osmium")
+    if osmium:
+        print(f"Filtering highway=* ways with osmium into {dest}")
+        _filter_highways_osmium(osmium, source, dest)
+        return
+
+    print(f"Filtering highway=* ways with pyosmium into {dest}")
+    print("  (install osmium-tool for a faster filter)")
+    _filter_highways_pyosmium(source, dest)
+
+
+def bbox_from_pbf(pbf: Path) -> tuple[float, float, float, float]:
+    osmium = shutil.which("osmium")
+    bbox = _bbox_from_osmium(osmium, pbf) if osmium else None
+    if bbox is None:
+        bbox = _bbox_from_pyosmium(pbf)
+    return bbox or get_settings().osm_bbox
 
 
 def main() -> None:
@@ -94,7 +159,6 @@ def main() -> None:
     args = parser.parse_args()
 
     settings = get_settings()
-    osmium = _require_osmium()
     full_pbf = settings.data_dir / "italy-latest.osm.pbf"
     roads_pbf = settings.osm_pbf_path
 
@@ -103,8 +167,8 @@ def main() -> None:
     else:
         print(f"Reusing {full_pbf}")
 
-    filter_highways(osmium, full_pbf, roads_pbf)
-    bbox = _bbox_from_pbf(osmium, roads_pbf)
+    filter_highways(full_pbf, roads_pbf)
+    bbox = bbox_from_pbf(roads_pbf)
     write_extent_from_bbox(
         bbox,
         settings.osm_extent_path,

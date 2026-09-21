@@ -19,6 +19,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra api
 
 COPY api ./api
+COPY scripts ./scripts
 
 EXPOSE 8000
 
