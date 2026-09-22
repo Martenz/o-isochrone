@@ -9,7 +9,7 @@ description = "Compute OSM road-network isochrones and return them as GeoJSON."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "o-isochrone contributors" }]
+authors = [{ name = "Martino Boni" }]
 keywords = ["isochrone", "osm", "osmnx", "geojson", "routing"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -42,7 +42,7 @@ notebooks = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/martinoboni/o-isochrone"
+Homepage = "https://github.com/Martenz/o-isochrone"
 
 [dependency-groups]
 dev = [
