@@ -224,3 +224,72 @@ uv run pytest
 ```
 
 Unit tests use a synthetic grid graph and do not download OSM data.
+
+## License
+
+This project is released under the [MIT License](LICENSE).
+
+## Open-source acknowledgments
+
+This repository depends on the following open-source projects and data. Links point at the upstream repositories (or primary project homes). Licenses below are the ones declared by those projects at the time of writing; always confirm upstream if you redistribute binaries or Docker images.
+
+### Core library (Python)
+
+| Project | Role here | License | Repository |
+| --- | --- | --- | --- |
+| [OSMnx](https://github.com/gboeing/osmnx) | Download / build OSM road graphs | MIT | https://github.com/gboeing/osmnx |
+| [NetworkX](https://github.com/networkx/networkx) | Graph walk / Dijkstra-style reachability | BSD-3-Clause | https://github.com/networkx/networkx |
+| [GeoPandas](https://github.com/geopandas/geopandas) | GeoDataFrame geometry pipeline | BSD-3-Clause | https://github.com/geopandas/geopandas |
+| [Shapely](https://github.com/shapely/shapely) | Buffers, hulls, GeoJSON geometry | BSD-3-Clause | https://github.com/shapely/shapely |
+| [GEOS](https://github.com/libgeos/geos) (via Shapely) | Native geometry engine | LGPL-2.1 | https://github.com/libgeos/geos |
+| [pyosmium](https://github.com/osmcode/pyosmium) | Python bindings for Osmium (PBF I/O / filter fallback) | BSD-2-Clause | https://github.com/osmcode/pyosmium |
+| [H3](https://github.com/uber/h3-py) (Uber) | Optional hexagon layer | Apache-2.0 | https://github.com/uber/h3-py |
+| [python-dotenv](https://github.com/theskumar/python-dotenv) | Load `.env` settings | BSD-3-Clause | https://github.com/theskumar/python-dotenv |
+
+Transitive GIS/runtime stack (NumPy, pandas, pyproj/PROJ, pyogrio/GDAL, SciPy, …) is pulled via `uv.lock` and is overwhelmingly MIT / BSD / Apache.
+
+### Example API & tooling
+
+| Project | Role here | License | Repository |
+| --- | --- | --- | --- |
+| [FastAPI](https://github.com/fastapi/fastapi) | Example HTTP API | MIT | https://github.com/fastapi/fastapi |
+| [Uvicorn](https://github.com/encode/uvicorn) | ASGI server | BSD-3-Clause | https://github.com/encode/uvicorn |
+| [uv](https://github.com/astral-sh/uv) | Package manager / Docker install | Apache-2.0 / MIT | https://github.com/astral-sh/uv |
+| [osmium-tool](https://github.com/osmcode/osmium-tool) | CLI PBF extract / `tags-filter` (subprocess + Docker image) | GPL-3.0 | https://github.com/osmcode/osmium-tool |
+| [libosmium](https://github.com/osmcode/libosmium) | C++ library behind osmium-tool / pyosmium | Boost Software License 1.0 | https://github.com/osmcode/libosmium |
+
+### Example demo (browser, CDN)
+
+| Project | Role here | License | Repository |
+| --- | --- | --- | --- |
+| [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) | Map renderer | BSD-3-Clause | https://github.com/maplibre/maplibre-gl-js |
+| [maplibre-gl-geocoder](https://github.com/maplibre/maplibre-gl-geocoder) | Default search UI (Photon / Nominatim) | MIT | https://github.com/maplibre/maplibre-gl-geocoder |
+| [nginx](https://github.com/nginx/nginx) | Serve static demo + `/api/` proxy | BSD-2-Clause | https://github.com/nginx/nginx |
+
+Optional geocoder plugins (CDN only when selected in `.env`): [Stadia Maps search box](https://github.com/stadiamaps/maplibre-search-box), [MapTiler geocoding control](https://github.com/maptiler/maptiler-geocoding-control).
+
+### Map data, tiles, and public APIs
+
+| Source | Role here | Terms | Home |
+| --- | --- | --- | --- |
+| [OpenStreetMap](https://www.openstreetmap.org) | Road network used for isochrones | [ODbL 1.0](https://opendatacommons.org/licenses/odbl/) | https://www.openstreetmap.org/copyright |
+| [Geofabrik](https://download.geofabrik.de/) | Italy PBF download used by the demo scripts | OSM data under ODbL; respect Geofabrik download policy | https://www.geofabrik.de/ |
+| [Overpass API](https://github.com/drolbr/Overpass-API) | Fallback network download via OSMnx | Public-instance usage policy | https://github.com/drolbr/Overpass-API |
+| [OpenFreeMap](https://github.com/hyperknot/openfreemap) | Demo basemap style/tiles (Liberty) | Free tiles; OSM-based → keep attribution | https://github.com/hyperknot/openfreemap |
+| [Komoot Photon](https://github.com/komoot/photon) | Default demo geocoder | Public instance; fair use | https://github.com/komoot/photon |
+| [Nominatim](https://github.com/osm-search/Nominatim) | Optional demo geocoder | OSM Nominatim usage policy | https://github.com/osm-search/Nominatim |
+
+### Docker base images
+
+- [`python:3.12-slim-bookworm`](https://hub.docker.com/_/python) (Debian Bookworm + CPython)
+- [`ghcr.io/astral-sh/uv`](https://github.com/astral-sh/uv/pkgs/container/uv)
+- [`nginx:alpine`](https://hub.docker.com/_/nginx)
+
+### License / distribution notes (for a public repo)
+
+- **This code (MIT)** may be published under MIT. A `LICENSE` file is included so GitHub and package consumers see it clearly.
+- **OSM data is not MIT.** Extracts under `data/*.pbf`, graph caches, and derived road databases remain subject to **ODbL**. Do not commit large PBFs (they are gitignored). Products that use OSM must retain **© OpenStreetMap contributors** attribution.
+- **osmium-tool is GPL-3.0** and is invoked as an external CLI (and installed in the example Docker image). That does **not** relicense this MIT Python library. Redistributing a Docker image that *includes* osmium-tool means that image ships GPL software — keep upstream notices and offer corresponding source for that component if you publish images.
+- **GEOS (LGPL-2.1)** is linked via Shapely wheels. Dynamic linking / LGPL is compatible with an MIT application; binary redistributors should preserve GEOS notices and the ability to replace the library.
+- **No AGPL** dependencies were found in the declared Python stack. OSRM / Valhalla / GraphHopper are **not** shipped (only mentioned as future ideas in `docs/performance.md`).
+- **Secrets:** `.env` is gitignored; ship only `.env.example`. Do not commit API keys for Stadia/MapTiler.

@@ -32,8 +32,9 @@ services:
       context: ./demo
     ports:
       - "8080:80"
-    volumes:
-      - ./demo/index.html:/usr/share/nginx/html/index.html:ro
+    # Avoid binding a single file into nginx: Docker Desktop/VirtioFS often
+    # returns ENOENT on open() while ls still sees the mount. The image already
+    # COPYs index.html; rebuild demo to pick up HTML changes.
     depends_on:
       api:
         condition: service_healthy

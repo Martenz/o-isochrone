@@ -172,7 +172,7 @@ def main() -> None:
     write_extent_from_bbox(
         bbox,
         settings.osm_extent_path,
-        {"name": "Italy roads", "source": str(roads_pbf)},
+        {"name": "Italy roads", "source": roads_pbf.name},
     )
     print(f"Wrote extent {settings.osm_extent_path} {bbox}")
 

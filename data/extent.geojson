@@ -3,7 +3,7 @@
   "properties": {
     "kind": "network_extent",
     "name": "Italy roads",
-    "source": "/Users/martinoboni/REPO/oisochron/data/italy-roads.osm.pbf"
+    "source": "italy-roads.osm.pbf"
   },
   "geometry": {
     "type": "Polygon",
