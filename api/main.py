@@ -1,20 +1,27 @@
-"""Example REST API around the oisochron library."""
+"""Example REST API around the o-isochrone library."""
 
 from __future__ import annotations
 
+import json
+import logging
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from oisochron import (
+from oisochrone import (
     IncludeLayer,
     IsochroneError,
     IsochroneOrigin,
     TravelType,
     __version__,
+    aiter_isochrones,
+    assign_origin_ids,
     compute_isochrone,
     compute_isochrones_async,
     get_network_extent,
@@ -22,6 +29,10 @@ from oisochron import (
     parse_include,
     parse_travel_type,
 )
+from oisochrone.graph_cache import preload_graph_cache
+from oisochrone.seed import start_graph_seed_background
+
+logger = logging.getLogger(__name__)
 
 _LAYER_HELP = (
     "`lines`: reachable road polylines; "
@@ -34,8 +45,36 @@ _LAYER_HELP = (
 _MAX_BATCH_ORIGINS = 25
 _MAX_BATCH_CONCURRENCY = 8
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    logging.getLogger("oisochrone").setLevel(logging.INFO)
+    logging.getLogger("oisochrone.seed").setLevel(logging.INFO)
+    logging.getLogger("oisochrone.network").setLevel(logging.INFO)
+    settings = get_settings()
+    try:
+        loaded = preload_graph_cache(settings)
+        if loaded:
+            logger.info("Graph tile preload ready (%s tile(s) in memory)", loaded)
+    except Exception:
+        logger.exception("Graph tile preload failed; continuing without warm cache")
+    try:
+        if start_graph_seed_background(settings):
+            logger.info(
+                "Graph tile seed running in background from %s "
+                "(modes=%s times=%s car_max=%s)",
+                settings.graph_seed_coordinates_path,
+                ",".join(settings.graph_seed_modes),
+                ",".join(str(t) for t in settings.graph_seed_travel_times_min),
+                settings.graph_seed_car_max_travel_time_min,
+            )
+    except Exception:
+        logger.exception("Could not start graph tile seed")
+    yield
+
+
 app = FastAPI(
-    title="oisochron",
+    title="o-isochrone",
     description=(
         "Compute OSM road-network isochrones as GeoJSON.\n\n"
         "**Travel types:** `foot`, `car`, `bicycle` "
@@ -43,6 +82,7 @@ app = FastAPI(
         f"**Include layers:** {_LAYER_HELP}"
     ),
     version=__version__,
+    lifespan=lifespan,
     openapi_tags=[
         {
             "name": "isochrone",
@@ -477,9 +517,21 @@ async def isochrone_batch(payload: IsochroneBatchRequest) -> IsochroneBatchRespo
     FeatureCollection and its features include `origin_id` so overlapping
     layers can be filtered per starting point.
     """
-    origins = [
-        IsochroneOrigin(lat=item.lat, lon=item.lon, id=item.id) for item in payload.origins
-    ]
+    try:
+        collections = await compute_isochrones_async(
+            _batch_origins(payload),
+            payload.travel_time_min,
+            payload.travel_type,
+            **_batch_kwargs(payload),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except IsochroneError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return IsochroneBatchResponse(collections=collections, count=len(collections))
+
+
+def _batch_kwargs(payload: IsochroneBatchRequest) -> dict[str, Any]:
     kwargs: dict[str, Any] = {
         "include": payload.include,
         "buffer_meters": payload.buffer_meters,
@@ -487,15 +539,105 @@ async def isochrone_batch(payload: IsochroneBatchRequest) -> IsochroneBatchRespo
     }
     if payload.max_concurrency is not None:
         kwargs["max_concurrency"] = payload.max_concurrency
+    return kwargs
+
+
+def _batch_origins(payload: IsochroneBatchRequest) -> list[IsochroneOrigin]:
+    return [IsochroneOrigin(lat=item.lat, lon=item.lon, id=item.id) for item in payload.origins]
+
+
+@app.post(
+    "/isochrone/batch/stream",
+    tags=["isochrone"],
+    summary="Stream isochrones for many origins as each finishes",
+    response_description=(
+        "Newline-delimited JSON (NDJSON). Events: `start`, `result`, `error`, `done` "
+        "(and `fatal` if the batch cannot start)."
+    ),
+    responses={
+        200: {
+            "description": "NDJSON event stream (`application/x-ndjson`).",
+            "content": {
+                "application/x-ndjson": {
+                    "example": (
+                        '{"type":"start","count":2,"origins":[{"id":"duomo","lat":45.46,"lon":9.19}]}\n'
+                        '{"type":"result","index":0,"origin_id":"duomo","collection":{"type":"FeatureCollection"}}\n'
+                        '{"type":"done","count":2,"ok":2,"failed":0}\n'
+                    )
+                }
+            },
+        },
+        422: {"description": "Invalid request body (before the stream starts)."},
+    },
+)
+async def isochrone_batch_stream(payload: IsochroneBatchRequest) -> StreamingResponse:
+    """Same inputs as ``POST /isochrone/batch``, but emit one NDJSON line per event.
+
+    Origins are computed in parallel. Each completed origin yields either a
+    ``result`` (FeatureCollection) or ``error`` event so clients can paint
+    incrementally; a single failure does not abort the rest of the batch.
+    """
     try:
-        collections = await compute_isochrones_async(
-            origins,
-            payload.travel_time_min,
-            payload.travel_type,
-            **kwargs,
-        )
+        prepared = assign_origin_ids(_batch_origins(payload))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except IsochroneError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return IsochroneBatchResponse(collections=collections, count=len(collections))
+
+    kwargs = _batch_kwargs(payload)
+
+    async def events() -> AsyncIterator[str]:
+        yield json.dumps(
+            {
+                "type": "start",
+                "count": len(prepared),
+                "origins": [
+                    {"id": origin.id, "lat": origin.lat, "lon": origin.lon}
+                    for origin in prepared
+                ],
+            },
+            separators=(",", ":"),
+        ) + "\n"
+        ok = 0
+        failed = 0
+        try:
+            async for item in aiter_isochrones(
+                prepared,
+                payload.travel_time_min,
+                payload.travel_type,
+                **kwargs,
+            ):
+                if item.ok:
+                    ok += 1
+                    payload_line = {
+                        "type": "result",
+                        "index": item.index,
+                        "origin_id": item.origin_id,
+                        "collection": item.collection,
+                    }
+                else:
+                    failed += 1
+                    payload_line = {
+                        "type": "error",
+                        "index": item.index,
+                        "origin_id": item.origin_id,
+                        "error": item.error,
+                    }
+                yield json.dumps(payload_line, separators=(",", ":")) + "\n"
+        except ValueError as exc:
+            yield json.dumps(
+                {"type": "fatal", "error": str(exc)},
+                separators=(",", ":"),
+            ) + "\n"
+            return
+        yield json.dumps(
+            {"type": "done", "count": len(prepared), "ok": ok, "failed": failed},
+            separators=(",", ":"),
+        ) + "\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )

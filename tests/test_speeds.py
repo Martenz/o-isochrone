@@ -1,4 +1,4 @@
-from oisochron.speeds import TravelType, highway_allowed, parse_travel_type, speed_kph
+from oisochrone.speeds import TravelType, highway_allowed, parse_travel_type, speed_kph
 
 
 def test_travel_type_aliases() -> None:

@@ -1,9 +1,11 @@
 from unittest.mock import patch
 
+import json
+
 from fastapi.testclient import TestClient
 
 from api.main import IsochroneRequest, app
-from oisochron import IncludeLayer, TravelType
+from oisochrone import IncludeLayer, TravelType
 
 client = TestClient(app)
 
@@ -143,3 +145,89 @@ def test_post_isochrone_batch_rejects_empty_origins() -> None:
         json={"origins": [], "travel_time_min": 10, "travel_type": "foot"},
     )
     assert response.status_code == 422
+
+
+@patch("api.main.aiter_isochrones")
+def test_post_isochrone_batch_stream_emits_ndjson(mock_aiter) -> None:
+    from oisochrone import BatchOriginResult
+
+    async def _gen(*args, **kwargs):
+        yield BatchOriginResult(
+            index=1,
+            origin_id="1",
+            collection={
+                "type": "FeatureCollection",
+                "features": [],
+                "metadata": {"origin_id": "1"},
+            },
+        )
+        yield BatchOriginResult(
+            index=0,
+            origin_id="duomo",
+            collection={
+                "type": "FeatureCollection",
+                "features": [{"properties": {"origin_id": "duomo"}}],
+                "metadata": {"origin_id": "duomo"},
+            },
+        )
+
+    mock_aiter.side_effect = _gen
+    with client.stream(
+        "POST",
+        "/isochrone/batch/stream",
+        json={
+            "origins": [
+                {"lat": 45.4642, "lon": 9.19, "id": "duomo"},
+                {"lat": 45.4863, "lon": 9.2045},
+            ],
+            "travel_time_min": 12,
+            "travel_type": "foot",
+            "include": ["buffered_lines"],
+        },
+    ) as response:
+        assert response.status_code == 200
+        assert "ndjson" in response.headers["content-type"]
+        events = [json.loads(line) for line in response.iter_lines() if line]
+
+    assert events[0]["type"] == "start"
+    assert events[0]["count"] == 2
+    assert events[0]["origins"][0]["id"] == "duomo"
+    assert events[1]["type"] == "result"
+    assert events[1]["origin_id"] == "1"
+    assert events[2]["type"] == "result"
+    assert events[2]["origin_id"] == "duomo"
+    assert events[3] == {"type": "done", "count": 2, "ok": 2, "failed": 0}
+    mock_aiter.assert_called_once()
+
+
+@patch("api.main.aiter_isochrones")
+def test_post_isochrone_batch_stream_emits_per_origin_errors(mock_aiter) -> None:
+    from oisochrone import BatchOriginResult
+
+    async def _gen(*args, **kwargs):
+        yield BatchOriginResult(index=0, origin_id="a", error="no roads")
+        yield BatchOriginResult(
+            index=1,
+            origin_id="b",
+            collection={"type": "FeatureCollection", "features": [], "metadata": {"origin_id": "b"}},
+        )
+
+    mock_aiter.side_effect = _gen
+    with client.stream(
+        "POST",
+        "/isochrone/batch/stream",
+        json={
+            "origins": [
+                {"lat": 45.46, "lon": 9.19, "id": "a"},
+                {"lat": 45.47, "lon": 9.20, "id": "b"},
+            ],
+            "travel_time_min": 10,
+            "travel_type": "foot",
+        },
+    ) as response:
+        events = [json.loads(line) for line in response.iter_lines() if line]
+
+    assert events[1]["type"] == "error"
+    assert events[1]["origin_id"] == "a"
+    assert events[2]["type"] == "result"
+    assert events[3] == {"type": "done", "count": 2, "ok": 1, "failed": 1}

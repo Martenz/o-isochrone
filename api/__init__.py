@@ -1,1 +1,1 @@
-"""Example FastAPI app that exposes the oisochron library."""
+"""Example FastAPI app that exposes the o-isochrone library."""

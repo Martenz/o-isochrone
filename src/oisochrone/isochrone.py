@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterable, Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor
+import math
+from collections.abc import AsyncIterator, Iterable, Iterator, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -13,16 +14,16 @@ import geopandas as gpd
 import h3
 import networkx as nx
 import osmnx as ox
-from shapely import concave_hull, segmentize
+from shapely import concave_hull
 from shapely.geometry import LineString, MultiLineString, MultiPolygon, Point, Polygon
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
-from oisochron.config import Settings, get_settings
-from oisochron.exceptions import IsochroneError
-from oisochron.geojson import feature, feature_collection
-from oisochron.network import load_road_network
-from oisochron.speeds import (
+from oisochrone.config import Settings, get_settings
+from oisochrone.exceptions import IsochroneError
+from oisochrone.geojson import feature, feature_collection
+from oisochrone.network import load_road_network
+from oisochrone.speeds import (
     TravelType,
     max_distance_meters,
     parse_travel_type,
@@ -36,13 +37,33 @@ DEFAULT_BATCH_CONCURRENCY = 4
 
 
 @dataclass(frozen=True, slots=True)
+class BatchOriginResult:
+    """One origin's outcome from a streaming batch computation.
+
+    Yielded in **completion order** by :func:`iter_isochrones` /
+    :func:`aiter_isochrones`. Failed origins set ``error`` and leave
+    ``collection`` as ``None`` instead of aborting the whole batch.
+    """
+
+    index: int
+    origin_id: str
+    collection: dict[str, Any] | None = None
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None and self.collection is not None
+
+
+@dataclass(frozen=True, slots=True)
 class IsochroneOrigin:
     """One starting point for a single or batch isochrone computation.
 
     ``id`` is optional. Batch helpers assign incremental string ids
     (``"1"``, ``"2"``, …) when it is omitted, skipping any ids already
     provided by other origins. Per-origin travel parameters override the
-    values passed to :func:`compute_isochrones` / :func:`compute_isochrones_async`.
+    values passed to :func:`compute_isochrones` / :func:`compute_isochrones_async`
+    / :func:`iter_isochrones` / :func:`aiter_isochrones`.
     """
 
     lat: float
@@ -233,6 +254,91 @@ async def compute_isochrones_async(
     return list(await asyncio.gather(*[run(job) for job in jobs]))
 
 
+def iter_isochrones(
+    origins: Sequence[IsochroneOrigin | Mapping[str, Any]],
+    travel_time_min: float | None = None,
+    travel_type: str | TravelType | None = None,
+    *,
+    include: str | Iterable[str] | None = None,
+    buffer_meters: float | None = None,
+    h3_resolution: int | None = None,
+    max_concurrency: int = DEFAULT_BATCH_CONCURRENCY,
+    settings: Settings | None = None,
+) -> Iterator[BatchOriginResult]:
+    """Compute isochrones in parallel, yielding each origin as it finishes.
+
+    Unlike :func:`compute_isochrones`, results arrive in **completion order**
+    and a single origin failure becomes a :class:`BatchOriginResult` with
+    ``error`` set rather than raising. Use this for progressive UIs or
+    notebooks that want to render features as soon as each origin completes.
+    """
+    jobs = _prepare_batch_jobs(
+        origins,
+        travel_time_min=travel_time_min,
+        travel_type=travel_type,
+        include=include,
+        buffer_meters=buffer_meters,
+        h3_resolution=h3_resolution,
+        settings=settings,
+    )
+    workers = _batch_workers(max_concurrency, len(jobs))
+    if workers == 1:
+        for index, job in enumerate(jobs):
+            yield _run_batch_job_result(job, index)
+        return
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_run_batch_job_result, job, index): index
+            for index, job in enumerate(jobs)
+        }
+        for future in as_completed(futures):
+            yield future.result()
+
+
+async def aiter_isochrones(
+    origins: Sequence[IsochroneOrigin | Mapping[str, Any]],
+    travel_time_min: float | None = None,
+    travel_type: str | TravelType | None = None,
+    *,
+    include: str | Iterable[str] | None = None,
+    buffer_meters: float | None = None,
+    h3_resolution: int | None = None,
+    max_concurrency: int = DEFAULT_BATCH_CONCURRENCY,
+    settings: Settings | None = None,
+) -> AsyncIterator[BatchOriginResult]:
+    """Async counterpart of :func:`iter_isochrones`.
+
+    Origins run concurrently (capped by ``max_concurrency``) via
+    ``asyncio.to_thread``. Yields :class:`BatchOriginResult` values in
+    completion order; per-origin failures do not cancel the rest.
+    """
+    jobs = _prepare_batch_jobs(
+        origins,
+        travel_time_min=travel_time_min,
+        travel_type=travel_type,
+        include=include,
+        buffer_meters=buffer_meters,
+        h3_resolution=h3_resolution,
+        settings=settings,
+    )
+    workers = _batch_workers(max_concurrency, len(jobs))
+    semaphore = asyncio.Semaphore(workers)
+
+    async def run(index: int, job: _BatchJob) -> BatchOriginResult:
+        async with semaphore:
+            return await asyncio.to_thread(_run_batch_job_result, job, index)
+
+    tasks = [asyncio.create_task(run(index, job)) for index, job in enumerate(jobs)]
+    try:
+        for finished in asyncio.as_completed(tasks):
+            yield await finished
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 @dataclass(frozen=True, slots=True)
 class _BatchJob:
     origin: IsochroneOrigin
@@ -392,6 +498,28 @@ def _run_batch_job(job: _BatchJob) -> dict[str, Any]:
         raise IsochroneError(f"origin {origin.id!r}: {exc}") from exc
 
 
+def _run_batch_job_result(job: _BatchJob, index: int) -> BatchOriginResult:
+    origin = job.origin
+    origin_id = str(origin.id or index + 1)
+    try:
+        collection = compute_isochrone(
+            origin.lat,
+            origin.lon,
+            job.travel_time_min,
+            job.travel_type,
+            include=job.include,
+            buffer_meters=job.buffer_meters,
+            h3_resolution=job.h3_resolution,
+            origin_id=origin.id,
+            settings=job.settings,
+        )
+    except (ValueError, IsochroneError) as exc:
+        return BatchOriginResult(index=index, origin_id=origin_id, error=str(exc))
+    except Exception as exc:  # noqa: BLE001 — surface unexpected failures per origin
+        return BatchOriginResult(index=index, origin_id=origin_id, error=str(exc))
+    return BatchOriginResult(index=index, origin_id=origin_id, collection=collection)
+
+
 def isochrone_from_graph(
     graph,
     lat: float,
@@ -415,12 +543,19 @@ def isochrone_from_graph(
         raise IsochroneError("Road network graph is empty.")
 
     kmh = speed_kph(mode, settings)
-    graph = graph.copy()
-    _assign_travel_times(graph, kmh)
+    # Cached tiles already carry travel_time for this mode/speed; avoid copying
+    # multi‑MB graphs on every request.
+    sample = next(iter(graph.edges(keys=True, data=True)), None)
+    has_times = sample is not None and "travel_time" in sample[3]
+    if has_times:
+        working = graph
+    else:
+        working = graph.copy()
+        _assign_travel_times(working, kmh)
 
-    origin = ox.distance.nearest_nodes(graph, X=lon, Y=lat)
+    origin = ox.distance.nearest_nodes(working, X=lon, Y=lat)
     radius_s = travel_time_min * 60.0
-    reachable = nx.ego_graph(graph, origin, radius=radius_s, distance="travel_time")
+    reachable = nx.ego_graph(working, origin, radius=radius_s, distance="travel_time")
     if reachable.number_of_edges() == 0 and reachable.number_of_nodes() == 0:
         raise IsochroneError("No reachable roads from the origin within the travel time.")
 
@@ -441,13 +576,19 @@ def isochrone_from_graph(
         if kind == "h3":
             features.extend(_h3_features(reachable, origin, resolution, shared))
             continue
+        if kind == "lines":
+            features.extend(_line_features(reachable, shared))
+            continue
         geom = _layer_geometry(kind, reachable, lines, width, resolution)
         props: dict[str, Any] = {"kind": kind, **shared}
         if kind in {"buffered_lines", "filled_buffer"}:
             props["buffer_meters"] = width
         if kind == "concave_hull":
             props["concave_ratio"] = _CONCAVE_HULL_RATIO
-        features.append(feature(geom, props))
+        feature_id = None
+        if origin_key is not None:
+            feature_id = f"{origin_key}:{kind}"
+        features.append(feature(geom, props, feature_id=feature_id))
 
     metadata: dict[str, Any] = {
         "lat": lat,
@@ -561,12 +702,15 @@ def _assign_travel_times(graph, kmh: float) -> None:
         data["travel_time"] = length / meters_per_second if length > 0 else float("inf")
 
 
-def _reachable_lines(graph) -> BaseGeometry:
+def _edge_line_geometries(graph) -> list[LineString]:
+    """Return one LineString per reachable edge (no dissolving / unary_union)."""
     lines: list[LineString] = []
     for u, v, _, data in graph.edges(keys=True, data=True):
         geom = data.get("geometry")
         if geom is None:
             u_data, v_data = graph.nodes[u], graph.nodes[v]
+            if "x" not in u_data or "x" not in v_data:
+                continue
             geom = LineString(
                 [(float(u_data["x"]), float(u_data["y"])), (float(v_data["x"]), float(v_data["y"]))]
             )
@@ -576,12 +720,36 @@ def _reachable_lines(graph) -> BaseGeometry:
             lines.extend(g for g in geom.geoms if not g.is_empty)
         elif geom.geom_type == "LineString":
             lines.append(geom)
+    return lines
+
+
+def _reachable_lines(graph) -> BaseGeometry:
+    lines = _edge_line_geometries(graph)
     if not lines:
         return MultiLineString()
     merged = unary_union(lines)
     if merged.geom_type == "LineString":
         return MultiLineString([merged])
     return merged
+
+
+def _line_features(graph, shared: dict[str, Any]) -> list[dict[str, Any]]:
+    """One GeoJSON Feature per road segment (keeps original edge geometries)."""
+    lines = _edge_line_geometries(graph)
+    if not lines:
+        raise IsochroneError("No reachable road geometries within the travel time.")
+    origin_key = shared.get("origin_id")
+    features: list[dict[str, Any]] = []
+    for index, geom in enumerate(lines):
+        feature_id = f"line:{index}" if origin_key is None else f"{origin_key}:line:{index}"
+        features.append(
+            feature(
+                geom,
+                {"kind": "lines", **shared, "segment_index": index},
+                feature_id=feature_id,
+            )
+        )
+    return features
 
 
 def _layer_geometry(
@@ -653,6 +821,7 @@ def _h3_features(graph, origin, resolution: int, shared: dict[str, Any]) -> list
         raise IsochroneError("No H3 cells intersect the reachable network.")
     finite = [value for value in distances.values() if value != float("inf")]
     max_distance = max(finite) if finite else 0.0
+    origin_key = shared.get("origin_id")
     features: list[dict[str, Any]] = []
     for cell, distance in distances.items():
         if distance == float("inf"):
@@ -661,6 +830,10 @@ def _h3_features(graph, origin, resolution: int, shared: dict[str, Any]) -> list
         if geom is None or geom.is_empty:
             continue
         progress = 0.0 if max_distance <= 0 else min(distance / max_distance, 1.0)
+        # Feature.id must be unique across a FeatureCollection. MapLibre (and
+        # many GIS tools) collapse features that share the same id — bare H3
+        # indexes collide across bulk origins and after attribute-only merges.
+        feature_id = cell if origin_key is None else f"{origin_key}:{cell}"
         features.append(
             feature(
                 geom,
@@ -672,7 +845,7 @@ def _h3_features(graph, origin, resolution: int, shared: dict[str, Any]) -> list
                     "route_distance_m": round(distance, 3),
                     "progress": round(progress, 6),
                 },
-                feature_id=cell,
+                feature_id=feature_id,
             )
         )
     if not features:
@@ -747,10 +920,15 @@ def _h3_route_distances(graph, origin, resolution: int) -> dict[str, float]:
                 cell = h3.latlng_to_cell(lat, lon, resolution)
                 visit(cell, distance)
                 if previous is not None and previous != cell:
-                    path = list(h3.grid_path_cells(previous, cell))
-                    for index, mid in enumerate(path):
-                        frac = index / max(len(path) - 1, 1)
-                        visit(mid, previous_distance + frac * (distance - previous_distance))
+                    try:
+                        gap = h3.grid_distance(previous, cell)
+                    except Exception:
+                        gap = 2
+                    if gap > 1:
+                        path = list(h3.grid_path_cells(previous, cell))
+                        for index, mid in enumerate(path):
+                            frac = index / max(len(path) - 1, 1)
+                            visit(mid, previous_distance + frac * (distance - previous_distance))
                 previous = cell
                 previous_distance = distance
     return cell_dist
@@ -776,8 +954,10 @@ def _h3_cells_to_multipolygon(cells: set[str]) -> BaseGeometry:
 
 
 def _h3_sample_step_meters(resolution: int) -> float:
+    # One sample per hex edge length is enough for coverage; denser sampling
+    # (edge/3) made urban H3 layers take minutes via GeoPandas reprojection.
     edge_m = float(h3.average_hexagon_edge_length(resolution, unit="m"))
-    return max(edge_m / 3.0, 1.0)
+    return max(edge_m, 5.0)
 
 
 def _line_parts(geom: BaseGeometry) -> list[LineString]:
@@ -796,11 +976,22 @@ def _line_parts(geom: BaseGeometry) -> list[LineString]:
 
 
 def _coords_along_line(line: LineString, step_m: float) -> list[tuple[float, float]]:
-    gdf = gpd.GeoDataFrame(geometry=[line], crs="EPSG:4326")
-    projected = ox.projection.project_gdf(gdf)
-    dense = segmentize(projected.geometry.iloc[0], max_segment_length=step_m)
-    lonlat = gpd.GeoSeries([dense], crs=projected.crs).to_crs("EPSG:4326").iloc[0]
-    return [(float(x), float(y)) for x, y, *_ in lonlat.coords]
+    """Sample lon/lat points along *line* without GeoPandas reprojection."""
+    if line.is_empty:
+        return []
+    coords = list(line.coords)
+    if len(coords) < 2:
+        return [(float(coords[0][0]), float(coords[0][1]))] if coords else []
+    # Approximate degrees from meters (sufficient for sampling density).
+    step_deg = max(float(step_m) / 111_320.0, 1e-7)
+    length_deg = float(line.length)
+    if length_deg <= 0:
+        return [(float(coords[0][0]), float(coords[0][1]))]
+    n = max(int(math.ceil(length_deg / step_deg)), 1)
+    return [
+        (float(p.x), float(p.y))
+        for p in (line.interpolate(i / n, normalized=True) for i in range(n + 1))
+    ]
 
 
 def _fill_holes(geom: BaseGeometry) -> BaseGeometry:

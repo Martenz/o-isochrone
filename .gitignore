@@ -27,6 +27,7 @@ data/*.pbf
 data/*.osm
 data/*.osm.bz2
 data/cache/
+data/graph_cache/
 data/tmp/
 !data/extent.geojson
 !data/.gitkeep

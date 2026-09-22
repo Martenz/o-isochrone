@@ -3,13 +3,13 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "oisochron"
+name = "oisochrone"
 version = "0.1.0"
 description = "Compute OSM road-network isochrones and return them as GeoJSON."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "oisochron contributors" }]
+authors = [{ name = "o-isochrone contributors" }]
 keywords = ["isochrone", "osm", "osmnx", "geojson", "routing"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -43,7 +43,7 @@ notebooks = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/martinoboni/oisochron"
+Homepage = "https://github.com/martinoboni/o-isochrone"
 
 [dependency-groups]
 dev = [
@@ -52,11 +52,14 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/oisochron"]
+packages = ["src/oisochrone"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/oisochrone/data/coordinate_seed.json" = "oisochrone/data/coordinate_seed.json"
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "src/oisochron",
+    "src/oisochrone",
     "README.md",
 ]
 

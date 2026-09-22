@@ -1,6 +1,6 @@
 from shapely.geometry import Point, box
 
-from oisochron.geojson import feature, feature_collection, geometry_to_geojson
+from oisochrone.geojson import feature, feature_collection, geometry_to_geojson
 
 
 def test_geometry_to_geojson_point() -> None:

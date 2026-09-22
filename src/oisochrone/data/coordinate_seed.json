@@ -1,0 +1,647 @@
+{
+  "description": "Seed coordinates for GRAPH_SEED_ON_STARTUP / scripts/seed_graph_tiles.py. Each point becomes one quantized graph tile per configured travel mode. Replace or extend these points to match the geographic area of your downloaded OSM extract; the bundled list is for the Italy demo PBF only.",
+  "points": [
+    {
+      "id": "agrigento",
+      "name": "Agrigento",
+      "lat": 37.3111,
+      "lon": 13.5765
+    },
+    {
+      "id": "alessandria",
+      "name": "Alessandria",
+      "lat": 44.9133,
+      "lon": 8.6157
+    },
+    {
+      "id": "ancona",
+      "name": "Ancona",
+      "lat": 43.6158,
+      "lon": 13.5189
+    },
+    {
+      "id": "aosta",
+      "name": "Aosta",
+      "lat": 45.737,
+      "lon": 7.3206
+    },
+    {
+      "id": "arezzo",
+      "name": "Arezzo",
+      "lat": 43.4633,
+      "lon": 11.8796
+    },
+    {
+      "id": "ascoli_piceno",
+      "name": "Ascoli Piceno",
+      "lat": 42.8537,
+      "lon": 13.5749
+    },
+    {
+      "id": "asti",
+      "name": "Asti",
+      "lat": 44.9008,
+      "lon": 8.2065
+    },
+    {
+      "id": "avellino",
+      "name": "Avellino",
+      "lat": 40.9146,
+      "lon": 14.792
+    },
+    {
+      "id": "bari",
+      "name": "Bari",
+      "lat": 41.1171,
+      "lon": 16.8719
+    },
+    {
+      "id": "barletta",
+      "name": "Barletta",
+      "lat": 41.3192,
+      "lon": 16.2838
+    },
+    {
+      "id": "belluno",
+      "name": "Belluno",
+      "lat": 46.1425,
+      "lon": 12.2167
+    },
+    {
+      "id": "benevento",
+      "name": "Benevento",
+      "lat": 41.1298,
+      "lon": 14.7826
+    },
+    {
+      "id": "bergamo",
+      "name": "Bergamo",
+      "lat": 45.6983,
+      "lon": 9.6773
+    },
+    {
+      "id": "biella",
+      "name": "Biella",
+      "lat": 45.5628,
+      "lon": 8.0579
+    },
+    {
+      "id": "bologna",
+      "name": "Bologna",
+      "lat": 44.4949,
+      "lon": 11.3426
+    },
+    {
+      "id": "bolzano",
+      "name": "Bolzano",
+      "lat": 46.4983,
+      "lon": 11.3548
+    },
+    {
+      "id": "brescia",
+      "name": "Brescia",
+      "lat": 45.5416,
+      "lon": 10.2118
+    },
+    {
+      "id": "brindisi",
+      "name": "Brindisi",
+      "lat": 40.6327,
+      "lon": 17.9418
+    },
+    {
+      "id": "cagliari",
+      "name": "Cagliari",
+      "lat": 39.2238,
+      "lon": 9.1217
+    },
+    {
+      "id": "caltanissetta",
+      "name": "Caltanissetta",
+      "lat": 37.4901,
+      "lon": 14.0629
+    },
+    {
+      "id": "campobasso",
+      "name": "Campobasso",
+      "lat": 41.5603,
+      "lon": 14.6629
+    },
+    {
+      "id": "caserta",
+      "name": "Caserta",
+      "lat": 41.0732,
+      "lon": 14.3283
+    },
+    {
+      "id": "catania",
+      "name": "Catania",
+      "lat": 37.5079,
+      "lon": 15.083
+    },
+    {
+      "id": "catanzaro",
+      "name": "Catanzaro",
+      "lat": 38.9098,
+      "lon": 16.5877
+    },
+    {
+      "id": "chieti",
+      "name": "Chieti",
+      "lat": 42.3512,
+      "lon": 14.167
+    },
+    {
+      "id": "como",
+      "name": "Como",
+      "lat": 45.8081,
+      "lon": 9.0852
+    },
+    {
+      "id": "cosenza",
+      "name": "Cosenza",
+      "lat": 39.2983,
+      "lon": 16.2537
+    },
+    {
+      "id": "cremona",
+      "name": "Cremona",
+      "lat": 45.1332,
+      "lon": 10.0227
+    },
+    {
+      "id": "crotone",
+      "name": "Crotone",
+      "lat": 39.0808,
+      "lon": 17.1271
+    },
+    {
+      "id": "cuneo",
+      "name": "Cuneo",
+      "lat": 44.3841,
+      "lon": 7.5425
+    },
+    {
+      "id": "enna",
+      "name": "Enna",
+      "lat": 37.5675,
+      "lon": 14.2794
+    },
+    {
+      "id": "fermo",
+      "name": "Fermo",
+      "lat": 43.1606,
+      "lon": 13.7189
+    },
+    {
+      "id": "ferrara",
+      "name": "Ferrara",
+      "lat": 44.8381,
+      "lon": 11.6198
+    },
+    {
+      "id": "firenze",
+      "name": "Firenze",
+      "lat": 43.7696,
+      "lon": 11.2558
+    },
+    {
+      "id": "foggia",
+      "name": "Foggia",
+      "lat": 41.4622,
+      "lon": 15.5446
+    },
+    {
+      "id": "forlì",
+      "name": "Forlì",
+      "lat": 44.2226,
+      "lon": 12.0407
+    },
+    {
+      "id": "frosinone",
+      "name": "Frosinone",
+      "lat": 41.6401,
+      "lon": 13.35
+    },
+    {
+      "id": "genova",
+      "name": "Genova",
+      "lat": 44.4056,
+      "lon": 8.9463
+    },
+    {
+      "id": "gorizia",
+      "name": "Gorizia",
+      "lat": 45.9415,
+      "lon": 13.6215
+    },
+    {
+      "id": "grosseto",
+      "name": "Grosseto",
+      "lat": 42.7631,
+      "lon": 11.1124
+    },
+    {
+      "id": "imperia",
+      "name": "Imperia",
+      "lat": 43.8869,
+      "lon": 8.0294
+    },
+    {
+      "id": "isernia",
+      "name": "Isernia",
+      "lat": 41.5943,
+      "lon": 14.2308
+    },
+    {
+      "id": "laquila",
+      "name": "L'Aquila",
+      "lat": 42.3498,
+      "lon": 13.3995
+    },
+    {
+      "id": "la_spezia",
+      "name": "La Spezia",
+      "lat": 44.1025,
+      "lon": 9.8241
+    },
+    {
+      "id": "latina",
+      "name": "Latina",
+      "lat": 41.4676,
+      "lon": 12.9037
+    },
+    {
+      "id": "lecce",
+      "name": "Lecce",
+      "lat": 40.3516,
+      "lon": 18.175
+    },
+    {
+      "id": "lecco",
+      "name": "Lecco",
+      "lat": 45.8566,
+      "lon": 9.3977
+    },
+    {
+      "id": "livorno",
+      "name": "Livorno",
+      "lat": 43.5485,
+      "lon": 10.3106
+    },
+    {
+      "id": "lodi",
+      "name": "Lodi",
+      "lat": 45.3097,
+      "lon": 9.5047
+    },
+    {
+      "id": "lucca",
+      "name": "Lucca",
+      "lat": 43.8429,
+      "lon": 10.5027
+    },
+    {
+      "id": "macerata",
+      "name": "Macerata",
+      "lat": 43.3002,
+      "lon": 13.4533
+    },
+    {
+      "id": "mantova",
+      "name": "Mantova",
+      "lat": 45.1564,
+      "lon": 10.7914
+    },
+    {
+      "id": "massa",
+      "name": "Massa",
+      "lat": 44.0354,
+      "lon": 10.1393
+    },
+    {
+      "id": "matera",
+      "name": "Matera",
+      "lat": 40.6664,
+      "lon": 16.6043
+    },
+    {
+      "id": "messina",
+      "name": "Messina",
+      "lat": 38.1938,
+      "lon": 15.554
+    },
+    {
+      "id": "milano",
+      "name": "Milano",
+      "lat": 45.4642,
+      "lon": 9.19
+    },
+    {
+      "id": "modena",
+      "name": "Modena",
+      "lat": 44.6471,
+      "lon": 10.9252
+    },
+    {
+      "id": "monza",
+      "name": "Monza",
+      "lat": 45.5845,
+      "lon": 9.2744
+    },
+    {
+      "id": "napoli",
+      "name": "Napoli",
+      "lat": 40.8518,
+      "lon": 14.2681
+    },
+    {
+      "id": "novara",
+      "name": "Novara",
+      "lat": 45.4469,
+      "lon": 8.6221
+    },
+    {
+      "id": "nuoro",
+      "name": "Nuoro",
+      "lat": 40.321,
+      "lon": 9.3301
+    },
+    {
+      "id": "oristano",
+      "name": "Oristano",
+      "lat": 39.9062,
+      "lon": 8.5885
+    },
+    {
+      "id": "padova",
+      "name": "Padova",
+      "lat": 45.4064,
+      "lon": 11.8768
+    },
+    {
+      "id": "palermo",
+      "name": "Palermo",
+      "lat": 38.1157,
+      "lon": 13.3615
+    },
+    {
+      "id": "parma",
+      "name": "Parma",
+      "lat": 44.8015,
+      "lon": 10.3279
+    },
+    {
+      "id": "pavia",
+      "name": "Pavia",
+      "lat": 45.1847,
+      "lon": 9.1582
+    },
+    {
+      "id": "perugia",
+      "name": "Perugia",
+      "lat": 43.1107,
+      "lon": 12.3908
+    },
+    {
+      "id": "pesaro",
+      "name": "Pesaro",
+      "lat": 43.9098,
+      "lon": 12.9131
+    },
+    {
+      "id": "pescara",
+      "name": "Pescara",
+      "lat": 42.4618,
+      "lon": 14.2161
+    },
+    {
+      "id": "piacenza",
+      "name": "Piacenza",
+      "lat": 45.0522,
+      "lon": 9.693
+    },
+    {
+      "id": "pisa",
+      "name": "Pisa",
+      "lat": 43.7228,
+      "lon": 10.4017
+    },
+    {
+      "id": "pistoia",
+      "name": "Pistoia",
+      "lat": 43.9307,
+      "lon": 10.9147
+    },
+    {
+      "id": "pordenone",
+      "name": "Pordenone",
+      "lat": 45.9564,
+      "lon": 12.6605
+    },
+    {
+      "id": "potenza",
+      "name": "Potenza",
+      "lat": 40.6395,
+      "lon": 15.805
+    },
+    {
+      "id": "prato",
+      "name": "Prato",
+      "lat": 43.8777,
+      "lon": 11.1022
+    },
+    {
+      "id": "ragusa",
+      "name": "Ragusa",
+      "lat": 36.9269,
+      "lon": 14.7255
+    },
+    {
+      "id": "ravenna",
+      "name": "Ravenna",
+      "lat": 44.4184,
+      "lon": 12.2035
+    },
+    {
+      "id": "reggio_calabria",
+      "name": "Reggio Calabria",
+      "lat": 38.1113,
+      "lon": 15.6473
+    },
+    {
+      "id": "reggio_emilia",
+      "name": "Reggio Emilia",
+      "lat": 44.6989,
+      "lon": 10.6297
+    },
+    {
+      "id": "rieti",
+      "name": "Rieti",
+      "lat": 42.4048,
+      "lon": 12.862
+    },
+    {
+      "id": "rimini",
+      "name": "Rimini",
+      "lat": 44.0678,
+      "lon": 12.5695
+    },
+    {
+      "id": "roma",
+      "name": "Roma",
+      "lat": 41.9028,
+      "lon": 12.4964
+    },
+    {
+      "id": "rovigo",
+      "name": "Rovigo",
+      "lat": 45.0705,
+      "lon": 11.7894
+    },
+    {
+      "id": "salerno",
+      "name": "Salerno",
+      "lat": 40.6824,
+      "lon": 14.7681
+    },
+    {
+      "id": "sassari",
+      "name": "Sassari",
+      "lat": 40.7259,
+      "lon": 8.5557
+    },
+    {
+      "id": "savona",
+      "name": "Savona",
+      "lat": 44.3072,
+      "lon": 8.481
+    },
+    {
+      "id": "siena",
+      "name": "Siena",
+      "lat": 43.3188,
+      "lon": 11.3308
+    },
+    {
+      "id": "siracusa",
+      "name": "Siracusa",
+      "lat": 37.0755,
+      "lon": 15.2866
+    },
+    {
+      "id": "sondrio",
+      "name": "Sondrio",
+      "lat": 46.171,
+      "lon": 9.8715
+    },
+    {
+      "id": "carbonia",
+      "name": "Carbonia",
+      "lat": 39.1672,
+      "lon": 8.5222
+    },
+    {
+      "id": "taranto",
+      "name": "Taranto",
+      "lat": 40.4644,
+      "lon": 17.247
+    },
+    {
+      "id": "teramo",
+      "name": "Teramo",
+      "lat": 42.6612,
+      "lon": 13.6987
+    },
+    {
+      "id": "terni",
+      "name": "Terni",
+      "lat": 42.5636,
+      "lon": 12.6427
+    },
+    {
+      "id": "torino",
+      "name": "Torino",
+      "lat": 45.0703,
+      "lon": 7.6869
+    },
+    {
+      "id": "trapani",
+      "name": "Trapani",
+      "lat": 38.0176,
+      "lon": 12.5365
+    },
+    {
+      "id": "trento",
+      "name": "Trento",
+      "lat": 46.0748,
+      "lon": 11.1217
+    },
+    {
+      "id": "treviso",
+      "name": "Treviso",
+      "lat": 45.6669,
+      "lon": 12.243
+    },
+    {
+      "id": "trieste",
+      "name": "Trieste",
+      "lat": 45.6495,
+      "lon": 13.7768
+    },
+    {
+      "id": "udine",
+      "name": "Udine",
+      "lat": 46.0626,
+      "lon": 13.2348
+    },
+    {
+      "id": "varese",
+      "name": "Varese",
+      "lat": 45.8206,
+      "lon": 8.8256
+    },
+    {
+      "id": "venezia",
+      "name": "Venezia",
+      "lat": 45.4408,
+      "lon": 12.3155
+    },
+    {
+      "id": "verbania",
+      "name": "Verbania",
+      "lat": 45.9216,
+      "lon": 8.5515
+    },
+    {
+      "id": "vercelli",
+      "name": "Vercelli",
+      "lat": 45.3202,
+      "lon": 8.4185
+    },
+    {
+      "id": "verona",
+      "name": "Verona",
+      "lat": 45.4384,
+      "lon": 10.9916
+    },
+    {
+      "id": "vibo_valentia",
+      "name": "Vibo Valentia",
+      "lat": 38.6759,
+      "lon": 16.1
+    },
+    {
+      "id": "vicenza",
+      "name": "Vicenza",
+      "lat": 45.5455,
+      "lon": 11.5353
+    },
+    {
+      "id": "viterbo",
+      "name": "Viterbo",
+      "lat": 42.4207,
+      "lon": 12.1077
+    }
+  ]
+}

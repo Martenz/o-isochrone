@@ -1,11 +1,20 @@
 import asyncio
+import time
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
-from oisochron import IsochroneOrigin, assign_origin_ids, compute_isochrones, compute_isochrones_async
-from oisochron.isochrone import coerce_origin
+from oisochrone import (
+    IsochroneOrigin,
+    aiter_isochrones,
+    assign_origin_ids,
+    compute_isochrones,
+    compute_isochrones_async,
+    iter_isochrones,
+)
+from oisochrone.exceptions import IsochroneError
+from oisochrone.isochrone import coerce_origin
 
 
 def test_assign_origin_ids_fills_incremental_gaps() -> None:
@@ -53,7 +62,7 @@ def _fake_collection(lat, lon, *args, origin_id=None, **kwargs):
     }
 
 
-@patch("oisochron.isochrone.compute_isochrone", side_effect=_fake_collection)
+@patch("oisochrone.isochrone.compute_isochrone", side_effect=_fake_collection)
 def test_compute_isochrones_stamps_ids_and_preserves_order(mock_compute) -> None:
     results = compute_isochrones(
         [
@@ -73,7 +82,7 @@ def test_compute_isochrones_stamps_ids_and_preserves_order(mock_compute) -> None
     assert mock_compute.call_args_list[1].kwargs["origin_id"] == "centrale"
 
 
-@patch("oisochron.isochrone.compute_isochrone", side_effect=_fake_collection)
+@patch("oisochrone.isochrone.compute_isochrone", side_effect=_fake_collection)
 def test_compute_isochrones_async_parallel(mock_compute) -> None:
     results = asyncio.run(
         compute_isochrones_async(
@@ -93,7 +102,7 @@ def test_compute_isochrones_async_parallel(mock_compute) -> None:
 
 def test_isochrone_from_graph_stamps_origin_id() -> None:
     from tests.test_isochrone import _grid_graph
-    from oisochron import isochrone_from_graph
+    from oisochrone import isochrone_from_graph
 
     result = isochrone_from_graph(
         _grid_graph(),
@@ -106,3 +115,60 @@ def test_isochrone_from_graph_stamps_origin_id() -> None:
     )
     assert result["metadata"]["origin_id"] == "duomo"
     assert all(feature["properties"]["origin_id"] == "duomo" for feature in result["features"])
+
+
+def test_iter_isochrones_yields_completion_order_and_isolates_errors() -> None:
+    delays = {"slow": 0.08, "fast": 0.01}
+
+    def _side_effect(lat, lon, *args, origin_id=None, **kwargs):
+        if origin_id == "bad":
+            raise IsochroneError("no roads")
+        time.sleep(delays.get(origin_id or "", 0.0))
+        return _fake_collection(lat, lon, origin_id=origin_id)
+
+    with patch("oisochrone.isochrone.compute_isochrone", side_effect=_side_effect):
+        results = list(
+            iter_isochrones(
+                [
+                    IsochroneOrigin(45.46, 9.19, id="slow"),
+                    IsochroneOrigin(45.47, 9.20, id="bad"),
+                    IsochroneOrigin(45.48, 9.21, id="fast"),
+                ],
+                travel_time_min=10,
+                travel_type="foot",
+                max_concurrency=3,
+            )
+        )
+
+    assert {item.origin_id for item in results} == {"slow", "bad", "fast"}
+    by_id = {item.origin_id: item for item in results}
+    assert by_id["fast"].ok
+    assert by_id["slow"].ok
+    assert not by_id["bad"].ok
+    assert "no roads" in (by_id["bad"].error or "")
+    # Faster success should complete before the slow one (completion order).
+    order = [item.origin_id for item in results]
+    assert order.index("fast") < order.index("slow")
+
+
+def test_aiter_isochrones_yields_results() -> None:
+    with patch("oisochrone.isochrone.compute_isochrone", side_effect=_fake_collection):
+
+        async def _collect():
+            out = []
+            async for item in aiter_isochrones(
+                [
+                    IsochroneOrigin(45.46, 9.19, id="a"),
+                    IsochroneOrigin(45.47, 9.20, id="b"),
+                ],
+                travel_time_min=8,
+                travel_type="foot",
+                max_concurrency=2,
+            ):
+                out.append(item)
+            return out
+
+        results = asyncio.run(_collect())
+
+    assert {item.origin_id for item in results} == {"a", "b"}
+    assert all(item.ok for item in results)

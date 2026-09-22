@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from oisochron.config import Settings
+from oisochrone.config import Settings
 
 
 class TravelType(str, Enum):
@@ -88,7 +88,7 @@ def parse_travel_type(value: str | TravelType) -> TravelType:
 
 def speed_kph(travel_type: str | TravelType, settings: Settings | None = None) -> float:
     """Average speed in km/h for the travel type."""
-    from oisochron.config import get_settings
+    from oisochrone.config import get_settings
 
     settings = settings or get_settings()
     mode = parse_travel_type(travel_type)
@@ -105,7 +105,7 @@ def max_distance_meters(
     settings: Settings | None = None,
 ) -> float:
     """Straight-line download radius: speed * time * safety margin."""
-    from oisochron.config import get_settings
+    from oisochrone.config import get_settings
 
     settings = settings or get_settings()
     meters_per_second = speed_kph(travel_type, settings) / 3.6

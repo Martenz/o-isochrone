@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>oisochron demo</title>
+  <title>o-isochrone demo</title>
   <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <link href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css" rel="stylesheet" />
   <style>
@@ -180,16 +180,16 @@
     }
     #map-loader {
       position: absolute;
-      inset: 0;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
       z-index: 5;
       display: none;
-      place-items: center;
-      background: rgba(16, 32, 51, 0.28);
-      backdrop-filter: blur(1px);
+      pointer-events: none;
     }
-    #map-loader.visible { display: grid; }
-    body.panel-open #map-loader { left: min(380px, 100%); }
-    body.bulk-open #map-loader { left: min(460px, 100%); }
+    #map-loader.visible { display: block; }
+    body.panel-open #map-loader { left: calc(50% + min(190px, 50vw)); }
+    body.bulk-open #map-loader { left: calc(50% + min(230px, 50vw)); }
     .bulk-hint {
       margin: 0;
       font-size: 12px;
@@ -411,34 +411,67 @@
       box-shadow: 0 2px 8px rgba(16, 32, 51, 0.35);
     }
     .map-loader-card {
-      display: grid;
-      justify-items: center;
-      gap: 12px;
-      padding: 18px 22px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
       background: rgba(255, 255, 255, 0.96);
       border: 1px solid var(--line);
-      border-radius: 12px;
-      box-shadow: 0 12px 36px rgba(16, 32, 51, 0.18);
+      border-radius: 999px;
+      box-shadow: 0 6px 20px rgba(16, 32, 51, 0.14);
       color: var(--ink);
-      font-size: 13px;
+      font-size: 12px;
+      white-space: nowrap;
+      max-width: min(420px, calc(100vw - 24px));
     }
     .map-loader-spinner {
-      width: 28px;
-      height: 28px;
-      border: 3px solid var(--line);
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
+      border: 2px solid var(--line);
       border-top-color: var(--accent);
       border-radius: 50%;
       animation: map-loader-spin 0.8s linear infinite;
     }
+    #map-loader-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #map-loader-timer {
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+      flex: 0 0 auto;
+    }
     @keyframes map-loader-spin {
       to { transform: rotate(360deg); }
     }
+    #compute-time {
+      position: absolute;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      z-index: 4;
+      display: none;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.94);
+      border: 1px solid var(--line);
+      box-shadow: 0 6px 20px rgba(16, 32, 51, 0.14);
+      color: var(--ink);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    #compute-time.visible { display: block; }
+    body.panel-open #compute-time { left: calc(50% + min(190px, 50vw)); }
+    body.bulk-open #compute-time { left: calc(50% + min(230px, 50vw)); }
   </style>
 </head>
 <body>
   <div id="hud">
     <div class="hud-title">
-      <h1>oisochron demo</h1>
+      <h1>o-isochrone demo</h1>
       <button type="button" id="bulk-open">Bulk</button>
     </div>
     <p>The dotted outline is the extent of the downloaded OSM road extract. Search or click the map for one origin, or open Bulk to compute several overlapping isochrones. Roads from the extract are not drawn.</p>
@@ -602,8 +635,10 @@
     <div class="map-loader-card" role="status" aria-live="polite">
       <div class="map-loader-spinner" aria-hidden="true"></div>
       <span id="map-loader-text">Computing isochrone…</span>
+      <span id="map-loader-timer">0.0s</span>
     </div>
   </div>
+  <div id="compute-time" aria-live="polite"></div>
   <div id="import-help-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="import-help-title" aria-hidden="true">
     <div class="modal-backdrop" data-import-help-close="1"></div>
     <div class="modal-card">
@@ -664,8 +699,17 @@ duomo,45.4642,9.1900
       bearing: 0,
       attributionControl: true,
     });
-    function addNavigationControl() {
+    function addMapControls() {
       map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+      map.addControl(
+        new maplibregl.GeolocateControl({
+          positionOptions: { enableHighAccuracy: true },
+          trackUserLocation: true,
+          showAccuracyCircle: true,
+          showUserLocation: true,
+        }),
+        "top-right",
+      );
     }
 
     function loadStylesheet(href) {
@@ -911,6 +955,8 @@ duomo,45.4642,9.1900
     const coordsEl = document.getElementById("iso-coords");
     const mapLoader = document.getElementById("map-loader");
     const mapLoaderText = document.getElementById("map-loader-text");
+    const mapLoaderTimer = document.getElementById("map-loader-timer");
+    const computeTimeEl = document.getElementById("compute-time");
     let marker = null;
     let lastLngLat = null;
     let lastCollection = null;
@@ -919,11 +965,52 @@ duomo,45.4642,9.1900
     let bulkMarkers = [];
     let enabledOriginIds = null;
     let enabledKinds = null;
+    let loaderStartedAt = 0;
+    let loaderTimerId = null;
+    let lastComputeSeconds = null;
+
+    function formatElapsed(seconds) {
+      if (!Number.isFinite(seconds) || seconds < 0) return "0.0s";
+      if (seconds < 60) return `${seconds.toFixed(1)}s`;
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds - mins * 60;
+      return `${mins}m ${secs.toFixed(1)}s`;
+    }
+
+    function stopLoaderTimer({ persist } = { persist: false }) {
+      const wasRunning = loaderTimerId != null || mapLoader.classList.contains("visible");
+      if (loaderTimerId != null) {
+        clearInterval(loaderTimerId);
+        loaderTimerId = null;
+      }
+      if (!persist || !wasRunning || !loaderStartedAt) return;
+      lastComputeSeconds = (performance.now() - loaderStartedAt) / 1000;
+      computeTimeEl.textContent = `Last compute: ${formatElapsed(lastComputeSeconds)}`;
+      computeTimeEl.classList.add("visible");
+      loaderStartedAt = 0;
+    }
 
     function showMapLoader(visible, text) {
       if (text) mapLoaderText.textContent = text;
-      mapLoader.classList.toggle("visible", visible);
-      mapLoader.setAttribute("aria-hidden", visible ? "false" : "true");
+      if (visible) {
+        computeTimeEl.classList.remove("visible");
+        const alreadyRunning = mapLoader.classList.contains("visible") && loaderStartedAt;
+        if (!alreadyRunning) {
+          loaderStartedAt = performance.now();
+          mapLoaderTimer.textContent = "0.0s";
+          if (loaderTimerId != null) clearInterval(loaderTimerId);
+          loaderTimerId = setInterval(() => {
+            const elapsed = (performance.now() - loaderStartedAt) / 1000;
+            mapLoaderTimer.textContent = formatElapsed(elapsed);
+          }, 100);
+        }
+        mapLoader.classList.add("visible");
+        mapLoader.setAttribute("aria-hidden", "false");
+      } else {
+        stopLoaderTimer({ persist: true });
+        mapLoader.classList.remove("visible");
+        mapLoader.setAttribute("aria-hidden", "true");
+      }
     }
 
     function originColor(index) {
@@ -944,6 +1031,65 @@ duomo,45.4642,9.1900
         return detail.map((item) => item.msg || JSON.stringify(item)).join("; ");
       }
       return fallback;
+    }
+
+    async function readApiPayload(response) {
+      const text = await response.text();
+      let payload = null;
+      if (text) {
+        try {
+          payload = JSON.parse(text);
+        } catch {
+          payload = null;
+        }
+      }
+      if (!response.ok) {
+        if (response.status === 504) {
+          throw new Error(
+            "The API proxy timed out before the isochrone finished. "
+              + "Cold clips (especially car / long travel times) can take several minutes; "
+              + "try a shorter time, fewer layers (skip h3), or call the API on :8001."
+          );
+        }
+        if (response.status === 502) {
+          throw new Error(
+            "The API worker stopped while computing (often out-of-memory on a large car clip). "
+              + "Retry with a shorter travel time, buffered_lines only, or wait for the container to restart."
+          );
+        }
+        throw new Error(errorDetail(payload, text || response.statusText));
+      }
+      if (payload == null) {
+        throw new Error("API returned a non-JSON response.");
+      }
+      return payload;
+    }
+
+    async function readNdjsonStream(response, onEvent) {
+      if (!response.ok) {
+        await readApiPayload(response);
+        return;
+      }
+      if (!response.body || typeof response.body.getReader !== "function") {
+        throw new Error("Streaming responses are not supported in this browser.");
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let newline = buffer.indexOf("\n");
+        while (newline >= 0) {
+          const line = buffer.slice(0, newline).trim();
+          buffer = buffer.slice(newline + 1);
+          if (line) onEvent(JSON.parse(line));
+          newline = buffer.indexOf("\n");
+        }
+      }
+      const trailing = buffer.trim();
+      if (trailing) onEvent(JSON.parse(trailing));
     }
 
     const LAYER_GROUPS = {
@@ -1008,7 +1154,7 @@ duomo,45.4642,9.1900
       return into;
     }
 
-    function fitFeatures(features) {
+    function fitFeatures(features, duration = 900) {
       const bounds = new maplibregl.LngLatBounds();
       let any = false;
       for (const feature of features) {
@@ -1021,7 +1167,7 @@ duomo,45.4642,9.1900
           }
         }
       }
-      if (any) map.fitBounds(bounds, { padding: 72, pitch: 30, duration: 900 });
+      if (any) map.fitBounds(bounds, { padding: 72, pitch: 30, duration });
     }
 
     function kindFilter(kind) {
@@ -1070,23 +1216,30 @@ duomo,45.4642,9.1900
       }
     }
 
-    function paintCollections(collections) {
+    function paintCollections(collections, options = {}) {
       const polygons = { type: "FeatureCollection", features: [] };
       const lines = { type: "FeatureCollection", features: [] };
       for (const collection of collections) {
         for (const feature of collection.features || []) {
-          const type = feature.geometry && feature.geometry.type;
+          // Clone so MapLibre cannot mutate the export payload in place.
+          const clone = JSON.parse(JSON.stringify(feature));
+          const type = clone.geometry && clone.geometry.type;
           if (type === "LineString" || type === "MultiLineString") {
-            lines.features.push(feature);
+            lines.features.push(clone);
           } else {
-            polygons.features.push(feature);
+            polygons.features.push(clone);
           }
         }
       }
       setSourceData("isochrone-fill", polygons);
       setSourceData("isochrone-line", lines);
       applyLayerFilters();
-      fitFeatures([...polygons.features, ...lines.features]);
+      if (options.fit !== false) {
+        fitFeatures(
+          [...polygons.features, ...lines.features],
+          options.fitDuration == null ? 900 : options.fitDuration,
+        );
+      }
     }
 
     function combinedCollection(collections) {
@@ -1400,13 +1553,16 @@ duomo,45.4642,9.1900
         meta.travel_type || (meta.count != null ? `batch-${meta.count}` : "iso"),
         meta.travel_time_min != null ? `${meta.travel_time_min}min` : "result",
       ].join("-");
-      const blob = new Blob([JSON.stringify(collection, null, 2)], {
+      // Export the original FeatureCollection (one Feature per H3 cell / road
+      // segment), not a dissolved map rendering.
+      const payload = JSON.parse(JSON.stringify(collection));
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
         type: "application/geo+json",
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `oisochron-${stamp}.geojson`;
+      link.download = `o-isochrone-${stamp}.geojson`;
       link.click();
       URL.revokeObjectURL(url);
     }
@@ -1443,10 +1599,7 @@ duomo,45.4642,9.1900
       showMapLoader(true, "Computing isochrone…");
       try {
         const response = await fetch(`${API}/isochrone?${params}`);
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(errorDetail(payload, response.statusText));
-        }
+        const payload = await readApiPayload(response);
         lastCollection = payload;
         resetResultLayers();
         paintCollections([payload]);
@@ -1504,26 +1657,82 @@ duomo,45.4642,9.1900
       }
       status.classList.remove("error");
       results.classList.remove("visible");
-      status.textContent = `Computing ${origins.length} isochrone(s) in parallel…`;
       button.disabled = true;
-      showMapLoader(true, `Computing ${origins.length} isochrones…`);
+      clearResultLayers();
+      status.textContent = `Streaming ${origins.length} isochrone(s)…`;
+      showMapLoader(true, `Computing 0 / ${origins.length}…`);
+      renderResultControls(
+        { type: "FeatureCollection", features: [], metadata: { count: origins.length } },
+        { bulk: true, origins },
+      );
+      const collections = [];
+      const errors = [];
+      let total = origins.length;
       try {
-        const response = await fetch(`${API}/isochrone/batch`, {
+        const response = await fetch(`${API}/isochrone/batch/stream`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/x-ndjson",
+          },
           body: JSON.stringify(body),
         });
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(errorDetail(payload, response.statusText));
+        await readNdjsonStream(response, (event) => {
+          if (event.type === "start") {
+            total = event.count || total;
+            status.textContent = `Streaming 0 / ${total}…`;
+            showMapLoader(true, `Computing 0 / ${total}…`);
+            return;
+          }
+          if (event.type === "result" && event.collection) {
+            collections.push(event.collection);
+            lastCollection = combinedCollection(collections);
+            paintCollections(collections, { fitDuration: collections.length === 1 ? 900 : 450 });
+            renderResultControls(lastCollection, { bulk: true, origins });
+            const done = collections.length + errors.length;
+            status.textContent = `Rendered ${collections.length} / ${total}`
+              + (errors.length ? ` (${errors.length} failed)` : "")
+              + "…";
+            showMapLoader(true, `Computing ${done} / ${total}…`);
+            return;
+          }
+          if (event.type === "error") {
+            errors.push(event);
+            const done = collections.length + errors.length;
+            status.textContent = `Rendered ${collections.length} / ${total}`
+              + ` (${errors.length} failed)…`;
+            showMapLoader(true, `Computing ${done} / ${total}…`);
+            return;
+          }
+          if (event.type === "fatal") {
+            throw new Error(event.error || "Batch stream failed.");
+          }
+          if (event.type === "done") {
+            lastCollection = combinedCollection(collections);
+            if (collections.length) {
+              paintCollections(collections, { fitDuration: 700 });
+              renderResultControls(lastCollection, { bulk: true, origins });
+            }
+            const featureCount = lastCollection.features.length;
+            const summary = `Rendered ${event.ok ?? collections.length} origin(s), `
+              + `${featureCount} feature(s)`;
+            if ((event.failed || errors.length) > 0) {
+              const failedIds = errors.map((item) => item.origin_id).filter(Boolean);
+              status.classList.add("error");
+              status.textContent = `${summary}; ${event.failed ?? errors.length} failed`
+                + (failedIds.length ? ` (${failedIds.join(", ")})` : "")
+                + ". Toggle origins below to isolate overlapping layers.";
+            } else {
+              status.textContent = `${summary}. Toggle origins below to isolate overlapping layers.`;
+            }
+          }
+        });
+        if (!collections.length && errors.length) {
+          throw new Error(
+            errors.map((item) => `${item.origin_id}: ${item.error}`).join("; ")
+              || "All origins failed.",
+          );
         }
-        const collections = payload.collections || [];
-        lastCollection = combinedCollection(collections);
-        resetResultLayers();
-        paintCollections(collections);
-        const featureCount = lastCollection.features.length;
-        status.textContent = `Rendered ${collections.length} origin(s), ${featureCount} feature(s). Toggle origins below to isolate overlapping layers.`;
-        renderResultControls(lastCollection, { bulk: true, origins });
       } catch (error) {
         status.classList.add("error");
         status.textContent = error.message;
@@ -1623,7 +1832,7 @@ duomo,45.4642,9.1900
       if (bulkPanel.classList.contains("open")) closeBulkPanel();
       else if (panel.classList.contains("open")) closePanel();
     });
-    attachGeocoder().finally(addNavigationControl);
+    attachGeocoder().finally(addMapControls);
 
     map.on("click", (event) => {
       if (bulkPanel.classList.contains("open")) {

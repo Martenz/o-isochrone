@@ -1941,7 +1941,7 @@ wheels = [
 ]
 
 [[package]]
-name = "oisochron"
+name = "oisochrone"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

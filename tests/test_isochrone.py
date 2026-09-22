@@ -3,7 +3,7 @@ import pytest
 from shapely.geometry import LineString, Point, shape
 from shapely.ops import unary_union
 
-from oisochron import IsochroneError, isochrone_from_graph
+from oisochrone import IsochroneError, isochrone_from_graph
 
 
 def _grid_graph() -> nx.MultiDiGraph:
@@ -148,7 +148,11 @@ def test_isochrone_polygon_covers_opening_of_horseshoe() -> None:
         travel_type="foot",
         include="both",
     )
-    by_kind = {feature["properties"]["kind"]: shape(feature["geometry"]) for feature in result["features"]}
+    by_kind = {}
+    for feature in result["features"]:
+        kind = feature["properties"]["kind"]
+        geom = shape(feature["geometry"])
+        by_kind[kind] = geom if kind not in by_kind else by_kind[kind].union(geom)
     midpoint = Point(9.192, 45.460)
     assert by_kind["filled_buffer"].intersects(midpoint.buffer(1e-6))
     assert by_kind["lines"].intersects(midpoint.buffer(1e-6))
@@ -164,27 +168,29 @@ def test_multi_include_hulls_and_h3() -> None:
         include="lines,buffered_lines,filled_buffer,convex_hull,concave_hull,h3",
         buffer_meters=15,
         h3_resolution=10,
+        origin_id="duomo",
     )
     kinds = [feature["properties"]["kind"] for feature in result["features"]]
-    assert kinds[:5] == [
-        "lines",
-        "buffered_lines",
-        "filled_buffer",
-        "convex_hull",
-        "concave_hull",
-    ]
+    assert "lines" in kinds
+    assert kinds.count("buffered_lines") == 1
+    assert kinds.count("filled_buffer") == 1
+    assert kinds.count("convex_hull") == 1
+    assert kinds.count("concave_hull") == 1
+    line_features = [feature for feature in result["features"] if feature["properties"]["kind"] == "lines"]
+    assert len(line_features) >= 2
+    assert all(feature["geometry"]["type"] == "LineString" for feature in line_features)
     h3_features = [feature for feature in result["features"] if feature["properties"]["kind"] == "h3"]
     assert h3_features
-    assert all(feature["geometry"]["type"] in {"Polygon", "MultiPolygon"} for feature in h3_features)
+    assert all(feature["geometry"]["type"] == "Polygon" for feature in h3_features)
+    assert len({feature["id"] for feature in h3_features}) == len(h3_features)
+    assert all(str(feature["id"]).startswith("duomo:") for feature in h3_features)
     for feature in result["features"]:
-        if feature["properties"]["kind"] == "lines":
-            assert feature["geometry"]["type"] in {"LineString", "MultiLineString"}
-        elif feature["properties"]["kind"] != "h3":
+        if feature["properties"]["kind"] not in {"lines", "h3"}:
             assert feature["geometry"]["type"] in {"Polygon", "MultiPolygon"}
 
 
 def test_parse_include_aliases_and_default() -> None:
-    from oisochron import parse_include
+    from oisochrone import parse_include
 
     assert parse_include(None) == ("buffered_lines",)
     assert parse_include("") == ("buffered_lines",)

@@ -15,8 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
-from oisochron.config import get_settings  # noqa: E402
-from oisochron.network import write_extent_from_bbox  # noqa: E402
+from oisochrone.config import get_settings  # noqa: E402
+from oisochrone.network import write_extent_from_bbox  # noqa: E402
 
 
 def _progress(prefix: str):
