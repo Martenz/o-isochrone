@@ -16,10 +16,16 @@ services:
       GRAPH_SEED_MODES: foot,bicycle,car
       GRAPH_SEED_TRAVEL_TIMES_MIN: "15,30"
       GRAPH_SEED_CAR_MAX_TRAVEL_TIME_MIN: "15"
+      # Limit the warm LRU to 3 graphs. Bicycle-30min tiles over dense Italian
+      # cities can be 50–150 MB each uncompressed; 8 slots (the library default)
+      # combined with gzip/pickle serialization overhead during seeding caused
+      # OOM kills (exit code 137) on the default Docker Desktop VM.
+      GRAPH_CACHE_MEMORY_SIZE: "3"
     volumes:
       - ./data:/data
     ports:
       - "8001:8000"
+    restart: on-failure
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
