@@ -77,9 +77,17 @@ def test_compute_isochrones_stamps_ids_and_preserves_order(mock_compute) -> None
     )
     assert [item["metadata"]["origin_id"] for item in results] == ["1", "centrale", "2"]
     assert mock_compute.call_count == 3
-    first_kwargs = mock_compute.call_args_list[0].kwargs
-    assert first_kwargs["origin_id"] == "1"
-    assert mock_compute.call_args_list[1].kwargs["origin_id"] == "centrale"
+    # Origins run on a thread pool, so the *call* order is not part of the
+    # contract (only the returned order is): check the id -> origin mapping.
+    called = {
+        (call.kwargs["origin_id"], call.args[0], call.args[1])
+        for call in mock_compute.call_args_list
+    }
+    assert called == {
+        ("1", 45.46, 9.19),
+        ("centrale", 45.47, 9.20),
+        ("2", 45.48, 9.21),
+    }
 
 
 @patch("oisochrone.isochrone.compute_isochrone", side_effect=_fake_collection)
