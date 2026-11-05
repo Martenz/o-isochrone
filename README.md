@@ -115,6 +115,41 @@ Batch helpers assign incremental string ids (`"1"`, `"2"`, …) when an origin o
 
 A walkthrough lives in [`notebook_examples/isochrone_usage.ipynb`](notebook_examples/isochrone_usage.ipynb).
 
+### Nested bands in one request
+
+`compute_isochrone_bands` loads the road network **once** (sized for the longest
+travel time), runs one shortest-path search, and returns one FeatureCollection
+per travel time — the usual "5 / 10 / 15 / 20 min rings" picture:
+
+```python
+from oisochrone import compute_isochrone_bands
+
+bands = compute_isochrone_bands(
+    45.4642,
+    9.1900,
+    travel_times_min=[5, 10, 15, 20],
+    travel_type="foot",
+    include="filled_buffer",
+    origin_id="duomo",
+)
+for band in bands:
+    meta = band["metadata"]
+    print(meta["travel_time_min"], meta["band_index"], meta["band_count"])
+```
+
+Bands come back in ascending travel time (duplicates collapse), and every
+feature plus the collection metadata carries `travel_time_min`, `band_index`,
+and `band_count`, so a client can stack them as rings without guessing order.
+`graph`-level use is identical through `isochrone_bands(graph, lat, lon, …)`.
+Bands share the origin and layer options; for independent origins use
+`compute_isochrones` / `iter_isochrones`.
+
+Travel times come from the OSM `length` attribute. When a graph arrives without
+it (hand-built graphs, custom extractors), edge length is measured along the
+edge geometry, then between the edge endpoints, using great-circle distances —
+so an east-west edge is not overstated by `1 / cos(latitude)` and no edge is
+dropped for lack of a length.
+
 ## OSM road network source
 
 The library always loads **only the portion** of the network needed for the request (travel time × average speed × `DOWNLOAD_MARGIN`). Configuration lives in the root `.env` and is shared by the library, API, and demo.
@@ -198,6 +233,7 @@ uv run uvicorn api.main:app --reload --port 8000
 - optional `buffer_meters` (corridor width for buffer layers; default 10)
 - optional `h3_resolution` (0–15, default 10 when `h3` is included)
 - `POST /isochrone/batch` with `origins: [{lat, lon, id?}, …]` plus the same shared travel parameters; returns `{count, collections}` (one FeatureCollection per origin)
+- `POST /isochrone/bands` with `travel_times_min: [5, 10, 15]` for one origin; returns `{count, collections}` (one FeatureCollection per band, ascending travel time, tagged `band_index` / `band_count`)
 - `POST /isochrone/batch/stream` — same body; responds with NDJSON events (`start` / `result` / `error` / `done`) as each origin finishes so clients can paint incrementally
 
 OpenAPI: http://127.0.0.1:8000/docs

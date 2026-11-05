@@ -147,6 +147,91 @@ def test_post_isochrone_batch_rejects_empty_origins() -> None:
     assert response.status_code == 422
 
 
+@patch("api.main.compute_isochrone_bands")
+def test_post_isochrone_bands_maps_payload(mock_bands) -> None:
+    mock_bands.return_value = [
+        {
+            "type": "FeatureCollection",
+            "features": [],
+            "metadata": {"travel_time_min": 5, "band_index": 0, "band_count": 2},
+        },
+        {
+            "type": "FeatureCollection",
+            "features": [],
+            "metadata": {"travel_time_min": 10, "band_index": 1, "band_count": 2},
+        },
+    ]
+    response = client.post(
+        "/isochrone/bands",
+        json={
+            "lat": 45.4642,
+            "lon": 9.19,
+            "travel_times_min": [10, 5],
+            "travel_type": "feet",
+            "include": ["filled_buffer"],
+            "origin_id": "duomo",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 2
+    assert payload["collections"][0]["metadata"]["band_index"] == 0
+    args, kwargs = mock_bands.call_args
+    assert args[0] == 45.4642
+    assert args[1] == 9.19
+    assert args[2] == [10, 5]
+    assert args[3] is TravelType.foot
+    assert kwargs["include"] == [IncludeLayer.filled_buffer]
+    assert kwargs["origin_id"] == "duomo"
+
+
+def test_post_isochrone_bands_rejects_empty_travel_times() -> None:
+    response = client.post(
+        "/isochrone/bands",
+        json={
+            "lat": 45.46,
+            "lon": 9.19,
+            "travel_times_min": [],
+            "travel_type": "foot",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_post_isochrone_bands_caps_band_count() -> None:
+    response = client.post(
+        "/isochrone/bands",
+        json={
+            "lat": 45.46,
+            "lon": 9.19,
+            "travel_times_min": list(range(1, 20)),
+            "travel_type": "foot",
+        },
+    )
+    assert response.status_code == 422
+
+
+@patch("api.main.compute_isochrone_bands", side_effect=ValueError("travel times must be greater than 0"))
+def test_post_isochrone_bands_maps_value_error_to_422(mock_bands) -> None:
+    response = client.post(
+        "/isochrone/bands",
+        json={"lat": 45.46, "lon": 9.19, "travel_times_min": [5], "travel_type": "foot"},
+    )
+    assert response.status_code == 422
+    assert "greater than 0" in response.json()["detail"]
+
+
+def test_openapi_exposes_bands_endpoint() -> None:
+    spec = client.get("/openapi.json").json()
+    path = spec["paths"]["/isochrone/bands"]["post"]
+    assert path["tags"] == ["isochrone"]
+    schema_name = path["requestBody"]["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[-1]
+    schema = spec["components"]["schemas"][schema_name]
+    assert schema["properties"]["travel_times_min"]["type"] == "array"
+    assert schema["required"].count("travel_times_min") == 1
+    assert schema["properties"]["include"]["type"] == "array"
+
+
 @patch("api.main.aiter_isochrones")
 def test_post_isochrone_batch_stream_emits_ndjson(mock_aiter) -> None:
     from oisochrone import BatchOriginResult

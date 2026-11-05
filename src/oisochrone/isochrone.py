@@ -20,6 +20,7 @@ from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
 from oisochrone.config import Settings, get_settings
+from oisochrone.costs import assign_travel_times
 from oisochrone.exceptions import IsochroneError
 from oisochrone.geojson import feature, feature_collection
 from oisochrone.network import load_road_network
@@ -520,50 +521,74 @@ def _run_batch_job_result(job: _BatchJob, index: int) -> BatchOriginResult:
     return BatchOriginResult(index=index, origin_id=origin_id, collection=collection)
 
 
-def isochrone_from_graph(
-    graph,
-    lat: float,
-    lon: float,
-    travel_time_min: float,
-    travel_type: str | TravelType,
-    *,
-    include: str | Iterable[str] | None = None,
-    buffer_meters: float | None = None,
-    h3_resolution: int | None = None,
-    origin_id: str | int | None = None,
-    settings: Settings | None = None,
-) -> dict[str, Any]:
-    """Compute isochrone GeoJSON from an already-loaded OSMnx graph."""
-    settings = settings or get_settings()
-    mode = parse_travel_type(travel_type)
-    layers = parse_include(include)
-    resolution = _parse_h3_resolution(h3_resolution)
-    width = _buffer_width(buffer_meters)
+def _origin_key(origin_id: str | int | None) -> str | None:
+    """Normalize an origin id to a non-empty string (``None`` stays ``None``)."""
+    if origin_id is None:
+        return None
+    return str(origin_id).strip() or None
+
+
+def _positive_minutes(travel_time_min: float, label: str = "travel_time_min") -> float:
+    """Coerce a travel time to a positive, finite number of minutes."""
+    try:
+        minutes = float(travel_time_min)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a number") from exc
+    if not math.isfinite(minutes) or minutes <= 0:
+        raise ValueError(f"{label} must be greater than 0")
+    return minutes
+
+
+def _prepare_working_graph(graph, lat: float, lon: float, mode: TravelType, settings: Settings):
+    """Return the graph carrying travel times, the snapped origin node, and the speed."""
     if graph.number_of_nodes() == 0:
         raise IsochroneError("Road network graph is empty.")
-
     kmh = speed_kph(mode, settings)
     # Cached tiles already carry travel_time for this mode/speed; avoid copying
-    # multi‑MB graphs on every request.
+    # multi-MB graphs on every request.
     sample = next(iter(graph.edges(keys=True, data=True)), None)
     has_times = sample is not None and "travel_time" in sample[3]
     if has_times:
         working = graph
     else:
         working = graph.copy()
-        _assign_travel_times(working, kmh)
-
+        assign_travel_times(working, kmh)
     origin = ox.distance.nearest_nodes(working, X=lon, Y=lat)
-    radius_s = travel_time_min * 60.0
-    reachable = nx.ego_graph(working, origin, radius=radius_s, distance="travel_time")
-    if reachable.number_of_edges() == 0 and reachable.number_of_nodes() == 0:
-        raise IsochroneError("No reachable roads from the origin within the travel time.")
+    return working, origin, kmh
 
+
+def _reachable_within(graph, origin, radius_s: float):
+    """The part of *graph* reachable from *origin* within *radius_s* travel seconds."""
+    reachable = nx.ego_graph(graph, origin, radius=radius_s, distance="travel_time")
+    if reachable.number_of_nodes() == 0:
+        raise IsochroneError("No reachable roads from the origin within the travel time.")
+    return reachable
+
+
+def _collection_from_reachable(
+    reachable,
+    *,
+    lat: float,
+    lon: float,
+    travel_time_min: float,
+    mode: TravelType,
+    kmh: float,
+    origin,
+    layers: Sequence[str],
+    resolution: int,
+    width: float,
+    origin_key: str | None,
+    extra: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build one FeatureCollection from an already-reduced reachable subgraph.
+
+    *extra* is stamped on every feature's properties and on the collection
+    metadata (bands use it for ``band_index`` / ``band_count``).
+    """
     lines = _reachable_lines(reachable)
     if lines.is_empty and reachable.number_of_nodes() == 0:
         raise IsochroneError("No reachable roads from the origin within the travel time.")
 
-    origin_key = None if origin_id is None else str(origin_id).strip() or None
     shared: dict[str, Any] = {
         "travel_type": mode.value,
         "travel_time_min": travel_time_min,
@@ -571,6 +596,8 @@ def isochrone_from_graph(
     }
     if origin_key is not None:
         shared["origin_id"] = origin_key
+    if extra:
+        shared.update(extra)
     features: list[dict[str, Any]] = []
     for kind in layers:
         if kind == "h3":
@@ -603,7 +630,174 @@ def isochrone_from_graph(
     }
     if origin_key is not None:
         metadata["origin_id"] = origin_key
+    if extra:
+        metadata.update(extra)
     return feature_collection(features, metadata=metadata)
+
+
+def isochrone_from_graph(
+    graph,
+    lat: float,
+    lon: float,
+    travel_time_min: float,
+    travel_type: str | TravelType,
+    *,
+    include: str | Iterable[str] | None = None,
+    buffer_meters: float | None = None,
+    h3_resolution: int | None = None,
+    origin_id: str | int | None = None,
+    settings: Settings | None = None,
+) -> dict[str, Any]:
+    """Compute isochrone GeoJSON from an already-loaded OSMnx graph."""
+    settings = settings or get_settings()
+    mode = parse_travel_type(travel_type)
+    layers = parse_include(include)
+    resolution = _parse_h3_resolution(h3_resolution)
+    width = _buffer_width(buffer_meters)
+    minutes = _positive_minutes(travel_time_min)
+    origin_key = _origin_key(origin_id)
+
+    working, origin, kmh = _prepare_working_graph(graph, lat, lon, mode, settings)
+    reachable = _reachable_within(working, origin, minutes * 60.0)
+    return _collection_from_reachable(
+        reachable,
+        lat=lat,
+        lon=lon,
+        travel_time_min=minutes,
+        mode=mode,
+        kmh=kmh,
+        origin=origin,
+        layers=layers,
+        resolution=resolution,
+        width=width,
+        origin_key=origin_key,
+    )
+
+
+def _parse_travel_times(value: float | Iterable[float] | Sequence[float]) -> tuple[float, ...]:
+    """Normalize a bands request to ascending, de-duplicated, positive minutes."""
+    if value is None:
+        raise ValueError("travel_times_min must contain at least one travel time")
+    if isinstance(value, bool):
+        raise ValueError("travel_times_min must contain numbers, not booleans")
+    if isinstance(value, (int, float, str)):
+        raw: list[Any] = [value]
+    else:
+        try:
+            raw = list(value)
+        except TypeError as exc:
+            raise ValueError(
+                "travel_times_min must be a number or a sequence of numbers"
+            ) from exc
+    if not raw:
+        raise ValueError("travel_times_min must contain at least one travel time")
+    times: list[float] = []
+    for item in raw:
+        if isinstance(item, bool):
+            raise ValueError(f"travel time {item!r} is not a number")
+        times.append(_positive_minutes(item, label="travel time"))
+    return tuple(sorted(set(times)))
+
+
+def isochrone_bands(
+    graph,
+    lat: float,
+    lon: float,
+    travel_times_min: float | Iterable[float],
+    travel_type: str | TravelType,
+    *,
+    include: str | Iterable[str] | None = None,
+    buffer_meters: float | None = None,
+    h3_resolution: int | None = None,
+    origin_id: str | int | None = None,
+    settings: Settings | None = None,
+) -> list[dict[str, Any]]:
+    """Compute nested isochrones for several travel times from one graph.
+
+    The graph is prepared once and a single shortest-path search (bounded by the
+    largest travel time) feeds every band, instead of one ego-graph per contour.
+    Building each band's layer geometry still runs per band and usually dominates
+    wall clock. Collections come back ordered by ascending travel time and carry
+    ``band_index`` / ``band_count`` in their metadata and feature properties,
+    which is what a ring-style visualization needs.
+    """
+    settings = settings or get_settings()
+    mode = parse_travel_type(travel_type)
+    layers = parse_include(include)
+    resolution = _parse_h3_resolution(h3_resolution)
+    width = _buffer_width(buffer_meters)
+    origin_key = _origin_key(origin_id)
+    times = _parse_travel_times(travel_times_min)
+
+    working, origin, kmh = _prepare_working_graph(graph, lat, lon, mode, settings)
+    distances = nx.single_source_dijkstra_path_length(
+        working,
+        origin,
+        cutoff=max(times) * 60.0,
+        weight="travel_time",
+    )
+    if not distances:
+        raise IsochroneError("No reachable roads from the origin within the travel time.")
+
+    band_count = len(times)
+    collections: list[dict[str, Any]] = []
+    for index, minutes in enumerate(times):
+        threshold = minutes * 60.0
+        nodes = [node for node, distance in distances.items() if distance <= threshold]
+        reachable = working.subgraph(nodes).copy()
+        collections.append(
+            _collection_from_reachable(
+                reachable,
+                lat=lat,
+                lon=lon,
+                travel_time_min=minutes,
+                mode=mode,
+                kmh=kmh,
+                origin=origin,
+                layers=layers,
+                resolution=resolution,
+                width=width,
+                origin_key=origin_key,
+                extra={"band_index": index, "band_count": band_count},
+            )
+        )
+    return collections
+
+
+def compute_isochrone_bands(
+    lat: float,
+    lon: float,
+    travel_times_min: float | Iterable[float],
+    travel_type: str | TravelType,
+    *,
+    include: str | Iterable[str] | None = None,
+    buffer_meters: float | None = None,
+    h3_resolution: int | None = None,
+    origin_id: str | int | None = None,
+    settings: Settings | None = None,
+) -> list[dict[str, Any]]:
+    """Download the nearby OSM roads once and return one isochrone per travel time.
+
+    The road network is sized for the longest travel time in the request, so a
+    five-band request downloads exactly what a single longest-band request would.
+    """
+    settings = settings or get_settings()
+    mode = parse_travel_type(travel_type)
+    times = _parse_travel_times(travel_times_min)
+    longest = _validate_travel_time(max(times), settings)
+    graph = load_road_network(lat, lon, max_distance_meters(mode, longest, settings), mode, settings)
+    return isochrone_bands(
+        graph,
+        lat,
+        lon,
+        times,
+        mode,
+        include=include,
+        buffer_meters=buffer_meters,
+        h3_resolution=h3_resolution,
+        origin_id=origin_id,
+        settings=settings,
+    )
 
 
 def parse_include(value: str | Iterable[str] | None) -> tuple[str, ...]:
@@ -673,33 +867,12 @@ def _buffer_width(buffer_meters: float | None) -> float:
 
 
 def _validate_travel_time(travel_time_min: float, settings: Settings) -> float:
-    try:
-        minutes = float(travel_time_min)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("travel_time_min must be a number") from exc
-    if minutes <= 0:
-        raise ValueError("travel_time_min must be greater than 0")
+    minutes = _positive_minutes(travel_time_min)
     if minutes > settings.max_travel_time_min:
         raise ValueError(
             f"travel_time_min cannot exceed {settings.max_travel_time_min} minutes"
         )
     return minutes
-
-
-def _assign_travel_times(graph, kmh: float) -> None:
-    meters_per_second = kmh / 3.6
-    if meters_per_second <= 0:
-        raise ValueError("Average speed must be greater than 0")
-    for _, _, _, data in graph.edges(keys=True, data=True):
-        length = float(data.get("length") or 0.0)
-        if length <= 0 and data.get("geometry") is not None:
-            geom = data["geometry"]
-            if geom.geom_type in {"LineString", "MultiLineString"}:
-                # Graph coordinates are lon/lat; approximate length in meters.
-                length = float(gpd.GeoSeries([geom], crs="EPSG:4326").to_crs(3857).length.iloc[0])
-        if length > 0:
-            data["length"] = length
-        data["travel_time"] = length / meters_per_second if length > 0 else float("inf")
 
 
 def _edge_line_geometries(graph) -> list[LineString]:

@@ -23,6 +23,7 @@ from oisochrone import (
     aiter_isochrones,
     assign_origin_ids,
     compute_isochrone,
+    compute_isochrone_bands,
     compute_isochrones_async,
     get_network_extent,
     get_settings,
@@ -44,6 +45,7 @@ _LAYER_HELP = (
 )
 _MAX_BATCH_ORIGINS = 25
 _MAX_BATCH_CONCURRENCY = 8
+_MAX_BANDS = 12
 
 
 @asynccontextmanager
@@ -333,8 +335,102 @@ class IsochroneBatchRequest(BaseModel):
         return list(parse_include(value if value is not None else None))
 
 
+class IsochroneBandsRequest(BaseModel):
+    """One origin, several travel times: nested isochrone bands in one request."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "lat": 45.4642,
+                    "lon": 9.19,
+                    "travel_times_min": [5, 10, 15, 20],
+                    "travel_type": "foot",
+                    "include": ["filled_buffer"],
+                    "origin_id": "duomo",
+                }
+            ]
+        },
+    )
+
+    lat: float = Field(..., ge=-90, le=90, description="Origin latitude in WGS84.")
+    lon: float = Field(..., ge=-180, le=180, description="Origin longitude in WGS84.")
+    travel_times_min: list[float] = Field(
+        ...,
+        min_length=1,
+        max_length=_MAX_BANDS,
+        description=(
+            f"Travel times in minutes (max {_MAX_BANDS}). Duplicates are collapsed and "
+            "bands are returned in ascending order."
+        ),
+        examples=[[5, 10, 15]],
+    )
+    travel_type: TravelType = Field(
+        ...,
+        description="Travel mode applied to every band.",
+        examples=["foot"],
+    )
+    include: list[IncludeLayer] = Field(
+        default=[IncludeLayer.filled_buffer],
+        description=(
+            "GeoJSON layers to return for every band. "
+            f"{_LAYER_HELP}"
+        ),
+        examples=[["filled_buffer"], ["buffered_lines", "lines"]],
+    )
+    buffer_meters: float | None = Field(
+        default=None,
+        ge=0,
+        description="Corridor width in meters for buffer layers. Default 10.",
+        examples=[10],
+    )
+    h3_resolution: int | None = Field(
+        default=None,
+        ge=0,
+        le=15,
+        description="Uber H3 resolution (0-15) when `include` contains `h3`. Default 10.",
+        examples=[10],
+    )
+    origin_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        description=(
+            "Optional. Identifier stamped on every band's FeatureCollection metadata "
+            "and features as `origin_id`."
+        ),
+        examples=["duomo"],
+    )
+
+    @field_validator("travel_type", mode="before")
+    @classmethod
+    def _normalize_travel_type(cls, value: object) -> TravelType:
+        return parse_travel_type(value)
+
+    @field_validator("include", mode="before")
+    @classmethod
+    def _normalize_include(cls, value: object) -> list[str]:
+        return list(parse_include(value if value is not None else None))
+
+    @field_validator("origin_id", mode="before")
+    @classmethod
+    def _normalize_origin_id(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        ident = str(value).strip()
+        return ident or None
+
+
 class IsochroneBatchResponse(BaseModel):
     """One FeatureCollection per origin, in request order."""
+
+    collections: list[dict[str, Any]]
+    count: int
+
+
+class IsochroneBandsResponse(BaseModel):
+    """One FeatureCollection per travel-time band, in ascending order."""
 
     collections: list[dict[str, Any]]
     count: int
@@ -544,6 +640,81 @@ def _batch_kwargs(payload: IsochroneBatchRequest) -> dict[str, Any]:
 
 def _batch_origins(payload: IsochroneBatchRequest) -> list[IsochroneOrigin]:
     return [IsochroneOrigin(lat=item.lat, lon=item.lon, id=item.id) for item in payload.origins]
+
+
+@app.post(
+    "/isochrone/bands",
+    tags=["isochrone"],
+    summary="Compute nested isochrones for several travel times",
+    response_description="One FeatureCollection per band, in ascending travel time.",
+    responses={
+        200: {
+            "description": "One GeoJSON FeatureCollection per band, ascending travel time.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "count": 2,
+                        "collections": [
+                            {
+                                "type": "FeatureCollection",
+                                "features": [
+                                    {
+                                        "type": "Feature",
+                                        "properties": {
+                                            "kind": "filled_buffer",
+                                            "travel_time_min": 5,
+                                            "band_index": 0,
+                                            "band_count": 2,
+                                        },
+                                        "geometry": {"type": "Polygon", "coordinates": []},
+                                    }
+                                ],
+                                "metadata": {
+                                    "lat": 45.4642,
+                                    "lon": 9.19,
+                                    "travel_time_min": 5,
+                                    "band_index": 0,
+                                    "band_count": 2,
+                                },
+                            },
+                            {
+                                "type": "FeatureCollection",
+                                "features": [],
+                                "metadata": {"travel_time_min": 10, "band_index": 1, "band_count": 2},
+                            },
+                        ],
+                    }
+                }
+            },
+        },
+        422: {
+            "description": "Invalid parameters, or no reachable roads within the largest travel time.",
+        },
+    },
+)
+def isochrone_bands_endpoint(payload: IsochroneBandsRequest) -> IsochroneBandsResponse:
+    """Compute one isochrone per travel time over a single road-network download.
+
+    All bands share the origin, mode, and layer options. Duplicate travel times
+    collapse and the bands come back in ascending order, each tagged with
+    `band_index` / `band_count` so a client can draw them as nested rings.
+    """
+    try:
+        collections = compute_isochrone_bands(
+            payload.lat,
+            payload.lon,
+            list(payload.travel_times_min),
+            payload.travel_type,
+            include=payload.include,
+            buffer_meters=payload.buffer_meters,
+            h3_resolution=payload.h3_resolution,
+            origin_id=payload.origin_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except IsochroneError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return IsochroneBandsResponse(collections=collections, count=len(collections))
 
 
 @app.post(
