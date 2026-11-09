@@ -15,6 +15,7 @@ import osmnx as ox
 from shapely.geometry import box
 
 from oisochrone.config import Settings, get_settings
+from oisochrone.costs import assign_travel_times
 from oisochrone.exceptions import IsochroneError
 from oisochrone.geojson import feature
 from oisochrone.graph_cache import (
@@ -42,20 +43,6 @@ def configure_osmnx(settings: Settings | None = None) -> None:
     ox.settings.timeout = settings.overpass_timeout
     # OSMnx expects the Overpass API root (it appends /interpreter).
     ox.settings.overpass_url = settings.overpass_url
-
-
-def _assign_travel_times(graph, kmh: float) -> None:
-    meters_per_second = kmh / 3.6
-    for _, _, _, data in graph.edges(keys=True, data=True):
-        length = data.get("length")
-        if length is None:
-            geom = data.get("geometry")
-            if geom is not None and hasattr(geom, "length"):
-                # Graph coordinates are lon/lat; approximate length in meters.
-                length = float(geom.length) * 111_320.0
-            else:
-                length = 0.0
-        data["travel_time"] = float(length) / meters_per_second if length and length > 0 else float("inf")
 
 
 def load_road_network(
@@ -142,7 +129,7 @@ def load_road_network(
             graph = _load_from_pbf(load_bbox, mode, settings)
         else:
             graph = _load_from_overpass(load_bbox, mode)
-        _assign_travel_times(graph, kmh)
+        assign_travel_times(graph, kmh)
         if key is not None and fingerprint is not None:
             cache.put(
                 key,
